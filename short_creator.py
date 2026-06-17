@@ -138,7 +138,7 @@ class Config:
     DESCRIPTION: str = "Automated YouTube Short created from Telegram content"
     TAGS: List[str] = field(default_factory=lambda: ["Shorts", "Auto-generated", "Telegram"])
     PRIVACY_STATUS: str = "private"
-    PLAYLIST_ID: str = "PLKfhqWP2rL8LS6mS4eJk0sx43sD4x8TeV"
+    PLAYLIST_ID: str = "PLL7BH4dMy6VxNRcIWVpKYlC-9AJR3Tytn"
     PUBLISH_DELAY_HOURS: int = 1
     BRAND_HASHTAGS: List[str] = field(default_factory=lambda: ["xeonbit24", "xeonbit24.com"])
 
@@ -1127,7 +1127,7 @@ async def _main():
             DESCRIPTION=os.getenv("DESCRIPTION", "Automated YouTube Short"),
             TAGS=get_env_json("TAGS", '["Shorts", "Auto-generated"]'),
             PRIVACY_STATUS=os.getenv("PRIVACY_STATUS", "private"),
-            PLAYLIST_ID=os.getenv("PLAYLIST_ID", "PLKfhqWP2rL8LS6mS4eJk0sx43sD4x8TeV"),
+            PLAYLIST_ID=os.getenv("PLAYLIST_ID", "PLL7BH4dMy6VxNRcIWVpKYlC-9AJR3Tytn"),
             PUBLISH_DELAY_HOURS=int(os.getenv("PUBLISH_DELAY_HOURS", 1)),
             BRAND_HASHTAGS=get_env_json("BRAND_HASHTAGS", '["xeonbit24", "xeonbit24.com"]'),
             MAX_DURATION=int(os.getenv("MAX_DURATION", 59)),
