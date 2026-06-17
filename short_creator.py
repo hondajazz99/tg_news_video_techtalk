@@ -95,9 +95,38 @@ def _c_crop(clip, x1, y1, x2, y2):
 
 
 def _make_video_clip(frame_func, duration):
+    """Create a VideoClip, automatically handling RGBA frames by splitting off an alpha mask.
+
+    MoviePy's compositor (blit) only accepts RGB (H,W,3) frames. Passing RGBA (H,W,4)
+    causes: ValueError: could not broadcast input array from shape (H,W,4) into shape (H,W,3).
+    The fix: detect RGBA output, strip alpha into a separate mask clip, then attach it.
+    """
+    # Probe frame at t=0 to detect RGBA
+    probe = frame_func(0)
+    is_rgba = (isinstance(probe, np.ndarray) and probe.ndim == 3 and probe.shape[2] == 4)
+
+    if not is_rgba:
+        if MOVIEPY_V2:
+            return VideoClip(frame_func, duration=duration)
+        return VideoClip(frame_func, duration=duration, ismask=False)
+
+    # RGBA path: separate RGB and alpha
+    def rgb_frame(t):
+        f = frame_func(t)
+        return f[:, :, :3]
+
+    def mask_frame(t):
+        f = frame_func(t)
+        return f[:, :, 3].astype(float) / 255.0
+
     if MOVIEPY_V2:
-        return VideoClip(frame_func, duration=duration)
-    return VideoClip(frame_func, duration=duration, ismask=False)
+        clip = VideoClip(rgb_frame, duration=duration)
+        mask = VideoClip(mask_frame, duration=duration, ismask=True)
+    else:
+        clip = VideoClip(rgb_frame, duration=duration, ismask=False)
+        mask = VideoClip(mask_frame, duration=duration, ismask=True)
+
+    return clip.set_mask(mask)
 
 
 def _make_silence(duration, fps=44100):
