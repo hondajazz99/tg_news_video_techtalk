@@ -1172,7 +1172,7 @@ async def _main():
     try:
         config = Config(
             TELEGRAM_TOKEN=os.getenv("TELEGRAM_TOKEN"),
-            TELEGRAM_CHANNELS=get_env_json("TELEGRAM_CHANNELS", '["@xeonbitchannel"]'),
+            TELEGRAM_CHANNELS=get_env_json("TELEGRAM_CHANNELS", '["@xeonbitchannel","@Techtalk66"]'),
             YOUTUBE_CLIENT_SECRETS=get_env_json("YOUTUBE_CLIENT_SECRETS", "{}"),
             TITLE_TEMPLATE=os.getenv("TITLE_TEMPLATE", "Video Short - {date}"),
             DESCRIPTION=os.getenv("DESCRIPTION", "Automated YouTube Short"),
