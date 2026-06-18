@@ -912,7 +912,12 @@ class VideoCreator:
 
         # ── 2. Build script & continuous TTS ──────────────────────────
         cta_text = cfg.OUTRO_CTA
-        script   = " ".join(c.strip() for c in all_captions if c.strip())
+        import re as _re
+        def _strip_hashtags(text: str) -> str:
+            return _re.sub(r'\s*#\w+', '', text).strip()
+
+        script   = " ".join(_strip_hashtags(c).strip() for c in all_captions if c.strip())
+        script   = _re.sub(r'\s+', ' ', script).strip()
         if not script:
             script = "Breaking news. Stay tuned for updates."
         script = f"{script} {cta_text}"
