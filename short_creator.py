@@ -216,7 +216,7 @@ class Config:
     CC_FONT_SIZE: int = 62
     CC_BOX_ALPHA: int = 210
     CC_Y_RATIO: float = 0.78
-    CC_MAX_LINE_WORDS: int = 4
+    CC_MAX_LINE_WORDS: int = 2
 
     # Jump-cut
     JUMPCUT_SEGMENTS_A: int = 3
@@ -225,6 +225,10 @@ class Config:
     EDGE_BLUR_RADIUS: int = 7
     BEAT_ZOOM_MAX: float = 0.07
     KEN_BURNS_ZOOM: float = 1.18
+
+    # TTS
+    TTS_VOICE_VI: str = "vi-VN-HoaiMyNeural"   # voice khi phát hiện tiếng Việt
+    TTS_VOICE_EN: str = "en-SG-LunaNeural"      # voice mặc định (tiếng Anh)
 
     # Intro label
     INTRO_LABEL: str = "BREAKING"
@@ -689,7 +693,8 @@ class VideoCreator:
     # ── TTS: 1 file toàn video, auto-fit duration ─────────────────────
 
     async def _generate_continuous_tts(
-        self, script_text: str, target_duration: float, out_path: Path
+        self, script_text: str, target_duration: float, out_path: Path,
+        voice: str = "en-SG-LunaNeural"
     ) -> Tuple[Optional[str], list]:
         """
         Tạo TTS liên tục cho toàn bộ script, tăng tốc atempo để khớp target_duration.
@@ -711,7 +716,7 @@ class VideoCreator:
         raw_path = Path(str(out_path) + ".raw.mp3")
         word_timings_raw: list = []
 
-        communicate = edge_tts.Communicate(clean, voice="en-SG-LunaNeural")
+        communicate = edge_tts.Communicate(clean, voice=voice)
         with open(str(raw_path), "wb") as f:
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
@@ -922,8 +927,20 @@ class VideoCreator:
             script = "Breaking news. Stay tuned for updates."
         script = f"{script} {cta_text}"
 
+        # ── Detect language from script ────────────────────────────────
+        def _is_vietnamese(text: str) -> bool:
+            """Detect Vietnamese by presence of diacritic characters unique to Vietnamese."""
+            vi_chars = set("àáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ"
+                           "ÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚÝĂĐƠƯẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼẾỀỂỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪỬỮỰỲỴỶỸ")
+            sample = text[:500]
+            vi_count = sum(1 for c in sample if c in vi_chars)
+            return vi_count >= 3  # ≥3 Vietnamese-specific chars → Vietnamese
+
+        tts_voice = cfg.TTS_VOICE_VI if _is_vietnamese(script) else cfg.TTS_VOICE_EN
+        logger.info(f"TTS voice selected: {tts_voice}")
+
         logger.info(f"TTS script ({len(script.split())} words): {script[:120]}...")
-        lang, word_timings = await self._generate_continuous_tts(script, TOTAL, tmp_tts)
+        lang, word_timings = await self._generate_continuous_tts(script, TOTAL, tmp_tts, tts_voice)
         all_words = [wt["word"] for wt in word_timings]
 
         # ── 3. Amplitude array for wiggle & zoom-pulse ─────────────────
