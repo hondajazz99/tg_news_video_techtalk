@@ -144,7 +144,7 @@ jobs:
           BRAND_HASHTAGS_EN:          ${{ vars.BRAND_HASHTAGS_EN || '["xeonbit24","xeonbit24.com"]' }}
           OUTRO_CTA_EN:               ${{ vars.OUTRO_CTA_EN || 'Follow for latest crypto news. Like & Subscribe!' }}
           INTRO_LABEL_EN:             ${{ vars.INTRO_LABEL_EN || 'BREAKING' }}
-          PLAYLIST_ID_EN:             ${{ vars.PLAYLIST_ID_EN || '' }}
+          PLAYLIST_ID_EN:             ${{ vars.PLAYLIST_ID_EN || 'PLKfhqWP2rL8LS6mS4eJk0sx43sD4x8TeV' }}
           PUBLISH_DELAY_HOURS_EN:     ${{ inputs.publish_delay_hours || '1' }}
           PRIVACY_STATUS:             ${{ inputs.privacy || 'private' }}
           MUSIC_OPTION:               "music.mp3"
@@ -331,7 +331,7 @@ jobs:
           BRAND_HASHTAGS_VI:          ${{ vars.BRAND_HASHTAGS_VI || '["techtalk66","techtalk"]' }}
           OUTRO_CTA_VI:               ${{ vars.OUTRO_CTA_VI || 'Theo dõi để cập nhật tin tức mới nhất. Like & Đăng ký!' }}
           INTRO_LABEL_VI:             ${{ vars.INTRO_LABEL_VI || 'TIN MỚI' }}
-          PLAYLIST_ID_VI:             ${{ vars.PLAYLIST_ID_VI || '' }}
+          PLAYLIST_ID_VI:             ${{ vars.PLAYLIST_ID_VI || 'PLL7BH4dMy6VxNRcIWVpKYlC-9AJR3Tytn' }}
           PUBLISH_DELAY_HOURS_VI:     ${{ inputs.publish_delay_hours || '1' }}
           PRIVACY_STATUS:             ${{ inputs.privacy || 'private' }}
           MUSIC_OPTION:               "music.mp3"
