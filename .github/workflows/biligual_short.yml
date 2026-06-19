@@ -69,27 +69,20 @@ jobs:
             ffmpeg \
             fonts-dejavu-core \
             fonts-freefont-ttf
-          fc-cache -fv
+          fc-cache -f
 
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install \
-            edge-tts \
-            moviepy \
-            numpy \
-            Pillow \
-            requests \
-            google-auth \
-            google-auth-oauthlib \
-            google-api-python-client
-
-      - name: Restore music processing cache
-        uses: actions/cache@v4
-        with:
-          path: .music_cache
-          key: music-cache-${{ hashFiles('music.mp3') }}
-          restore-keys: music-cache-
+            "edge-tts==6.1.*" \
+            "moviepy==1.0.*" \
+            "numpy==1.26.*" \
+            "Pillow==10.*" \
+            "requests==2.*" \
+            "google-auth==2.*" \
+            "google-auth-oauthlib==1.*" \
+            "google-api-python-client==2.*"
 
       - name: Restore EN published IDs
         uses: actions/cache@v4
@@ -140,6 +133,7 @@ jobs:
           name: en-video-debug-${{ github.run_id }}
           path: output_short_en.mp4
           retention-days: 1
+          if-no-files-found: ignore
 
       - name: Save EN published IDs
         if: always()
@@ -176,29 +170,21 @@ jobs:
             ffmpeg \
             fonts-dejavu-core \
             fonts-freefont-ttf \
-            fonts-noto \
-            fonts-noto-cjk
-          fc-cache -fv
+            fonts-noto
+          fc-cache -f
 
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install \
-            edge-tts \
-            moviepy \
-            numpy \
-            Pillow \
-            requests \
-            google-auth \
-            google-auth-oauthlib \
-            google-api-python-client
-
-      - name: Restore music processing cache
-        uses: actions/cache@v4
-        with:
-          path: .music_cache
-          key: music-cache-${{ hashFiles('music.mp3') }}
-          restore-keys: music-cache-
+            "edge-tts==6.1.*" \
+            "moviepy==1.0.*" \
+            "numpy==1.26.*" \
+            "Pillow==10.*" \
+            "requests==2.*" \
+            "google-auth==2.*" \
+            "google-auth-oauthlib==1.*" \
+            "google-api-python-client==2.*"
 
       - name: Restore VI published IDs
         uses: actions/cache@v4
@@ -249,6 +235,7 @@ jobs:
           name: vi-video-debug-${{ github.run_id }}
           path: output_short_vi.mp4
           retention-days: 1
+          if-no-files-found: ignore
 
       - name: Save VI published IDs
         if: always()
@@ -286,10 +273,10 @@ jobs:
           echo "message=$MESSAGE" >> $GITHUB_OUTPUT
 
       #- name: Send Telegram notification (optional)
-        #if: ${{ secrets.NOTIFY_TELEGRAM_TOKEN != '' && secrets.NOTIFY_CHAT_ID != '' }}
-        #run: |
-          #curl -s -X POST \
-            #"https://api.telegram.org/bot${{ secrets.NOTIFY_TELEGRAM_TOKEN }}/sendMessage" \
-            #-d chat_id="${{ secrets.NOTIFY_CHAT_ID }}" \
-            #-d parse_mode="Markdown" \
-            #-d text="${{ steps.msg.outputs.message }}"
+      #  if: ${{ secrets.NOTIFY_TELEGRAM_TOKEN != '' && secrets.NOTIFY_CHAT_ID != '' }}
+      #  run: |
+      #    curl -s -X POST \
+      #      "https://api.telegram.org/bot${{ secrets.NOTIFY_TELEGRAM_TOKEN }}/sendMessage" \
+      #      -d chat_id="${{ secrets.NOTIFY_CHAT_ID }}" \
+      #      -d parse_mode="Markdown" \
+      #      -d text="${{ steps.msg.outputs.message }}"
