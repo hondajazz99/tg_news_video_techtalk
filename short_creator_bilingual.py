@@ -414,7 +414,16 @@ class VideoCreator:
             clip = AudioFileClip(music_path)
             dur = min(clip.duration, total_sec + 2)
             clip = _c_subclip(clip, 0, dur)
-            frames = clip.to_soundarray(fps=fps)
+            # ── Guard against negative-index bug in moviepy's audio reader ──
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                try:
+                    frames = clip.to_soundarray(fps=fps)
+                except Exception:
+                    clip.close()
+                    return np.zeros(n)
+            # ────────────────────────────────────────────────────────────────
             clip.close()
             rms = np.sqrt(np.mean(frames ** 2, axis=1)) if frames.ndim > 1 else np.abs(frames)
             mn, mx = rms.min(), rms.max()
