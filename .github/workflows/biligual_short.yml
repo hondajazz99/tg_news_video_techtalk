@@ -186,10 +186,10 @@ jobs:
           if-no-files-found: ignore
 
   # ════════════════════════════════════════════════════════════════════
-  # Job 2 – Vietnamese pipeline  (@CryptoHieuQua → YouTube VI channel)
+  # Job 2 – Vietnamese pipeline  (@TechTalk66 → YouTube VI channel)
   # ════════════════════════════════════════════════════════════════════
   create_vi_short:
-    name: 'VI — @CryptoHieuQua → YouTube VI'
+    name: 'VI — @TechTalk66 → YouTube VI'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -246,8 +246,8 @@ jobs:
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
           YOUTUBE_CLIENT_SECRETS_VI:  ${{ secrets.YOUTUBE_CLIENT_SECRETS_VI }}
-          TG_CHANNEL_VI:              "@CryptoHieuQua"
-          TG_CHANNEL_NAME_VI:         "CryptoHieuQua"
+          TG_CHANNEL_VI:              "@TechTalk66"
+          TG_CHANNEL_NAME_VI:         "TechTalk66"
           TTS_VOICE_VI:               ${{ vars.TTS_VOICE_VI || 'vi-VN-HoaiMyNeural' }}
           DESCRIPTION_VI:             ${{ vars.DESCRIPTION_VI || 'Tin tức công nghệ và crypto bằng tiếng Việt' }}
           TAGS_VI:                    ${{ vars.TAGS_VI || '["Shorts","CryptoViet","TinTuc","CongNghe"]' }}
