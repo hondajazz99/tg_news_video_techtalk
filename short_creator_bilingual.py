@@ -17,7 +17,7 @@
 #   YOUTUBE_CLIENT_SECRETS_VI   – OAuth JSON for Vietnamese YT channel
 #   PLAYLIST_ID_EN / _VI        – YouTube playlist IDs
 #   TG_CHANNEL_EN               – default "@xeonbitchannel"
-#   TG_CHANNEL_VI               – default "@Techtalk66"
+#   TG_CHANNEL_VI               – default "@TechTalk66"
 #   TG_CHANNEL_NAME_EN / _VI    – credit name (no @)
 #   TTS_VOICE_EN / _VI          – override TTS voice
 #   OUTRO_CTA_EN / _VI          – per-lang CTA text
@@ -54,6 +54,12 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
+# Pillow >=10 removed Image.ANTIALIAS, but moviepy 1.x's resize.py still
+# references it (https://github.com/Zulko/moviepy/issues/2238, unfixed as of
+# moviepy 1.0.x). Restore it as an alias so clip.resize()/vfx.resize keep working.
+if not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = Image.Resampling.LANCZOS
 
 # moviepy v1 / v2 compat
 try:
