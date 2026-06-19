@@ -99,13 +99,13 @@ jobs:
           restore-keys: published-ids-en-
 
       # ── Clips: optional secret — unpack into clips/ if provided ───────
-      - name: Restore EN clips from secret (optional)
-        if: ${{ secrets.CLIPS_EN_B64 != '' }}
-        run: |
-          mkdir -p clips
-          echo "$CLIPS_EN_B64" | base64 -d | tar -xzf - -C clips/
-        env:
-          CLIPS_EN_B64: ${{ secrets.CLIPS_EN_B64 }}
+      #- name: Restore EN clips from secret (optional)
+      #  if: ${{ secrets.CLIPS_EN_B64 != '' }}
+      #  run: |
+      #    mkdir -p clips
+      #    echo "$CLIPS_EN_B64" | base64 -d | tar -xzf - -C clips/
+      #  env:
+      #    CLIPS_EN_B64: ${{ secrets.CLIPS_EN_B64 }}
 
       - name: Run EN pipeline
         env:
@@ -208,13 +208,13 @@ jobs:
           restore-keys: published-ids-vi-
 
       # ── Clips: optional secret — unpack into clips/ if provided ───────
-      - name: Restore VI clips from secret (optional)
-        if: ${{ secrets.CLIPS_VI_B64 != '' }}
-        run: |
-          mkdir -p clips
-          echo "$CLIPS_VI_B64" | base64 -d | tar -xzf - -C clips/
-        env:
-          CLIPS_VI_B64: ${{ secrets.CLIPS_VI_B64 }}
+      #- name: Restore VI clips from secret (optional)
+      #  if: ${{ secrets.CLIPS_VI_B64 != '' }}
+      #  run: |
+      #    mkdir -p clips
+      #    echo "$CLIPS_VI_B64" | base64 -d | tar -xzf - -C clips/
+      #  env:
+      #    CLIPS_VI_B64: ${{ secrets.CLIPS_VI_B64 }}
 
       - name: Run VI pipeline
         env:
