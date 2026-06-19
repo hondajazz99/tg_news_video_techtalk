@@ -37,7 +37,6 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
-  # Branch where .published_ids_*.json files live (never deleted, append-only)
   DATA_BRANCH: 'data/published-ids'
 
 jobs:
@@ -48,7 +47,7 @@ jobs:
     name: 'EN — @xeonbitchannel → YouTube EN'
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # needed so git push to data branch works
+      contents: write
     if: >
       github.event_name != 'workflow_dispatch' ||
       inputs.pipeline == 'both' ||
@@ -58,7 +57,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Pull the persisted EN published-IDs from the data branch ──────────
       - name: Restore EN published IDs from data branch
         run: |
           git fetch origin "$DATA_BRANCH" 2>/dev/null || true
@@ -119,15 +117,19 @@ jobs:
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
         run: python short_creator_bilingual.py --lang en
 
-      # ── Push updated EN published-IDs back to the data branch ─────────────
       - name: Save EN published IDs to data branch
-        if: always()   # save even if the pipeline step above had a partial failure
+        if: always()
         run: |
-          # Configure git identity for the push
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Switch to (or create) the data branch without touching the working tree
+          # ── Stash the freshly-written file OUTSIDE the workspace ──────────
+          # Must do this BEFORE switching branches, because git checkout will
+          # overwrite $GITHUB_WORKSPACE and the cp source/dest become the same path.
+          UPDATED_FILE="$(mktemp /tmp/published_ids_en_XXXX.json)"
+          cp "$GITHUB_WORKSPACE/.published_ids_en.json" "$UPDATED_FILE"
+
+          # ── Switch to (or create) the data branch ─────────────────────────
           git fetch origin "$DATA_BRANCH" 2>/dev/null || true
           if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
             git checkout --orphan _tmp_data
@@ -138,11 +140,11 @@ jobs:
             git reset --hard
           fi
 
-          # Copy the freshly-written IDs file into the data branch tree
-          cp "$GITHUB_WORKSPACE/.published_ids_en.json" .published_ids_en.json
+          # ── Drop the updated file in (now safe — different path) ──────────
+          cp "$UPDATED_FILE" .published_ids_en.json
+          rm -f "$UPDATED_FILE"
 
           git add .published_ids_en.json
-          # Only commit+push if there is actually something new
           if git diff --cached --quiet; then
             echo "No changes to .published_ids_en.json — skipping push"
           else
@@ -177,7 +179,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Pull the persisted VI published-IDs from the data branch ──────────
       - name: Restore VI published IDs from data branch
         run: |
           git fetch origin "$DATA_BRANCH" 2>/dev/null || true
@@ -239,13 +240,17 @@ jobs:
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
         run: python short_creator_bilingual.py --lang vi
 
-      # ── Push updated VI published-IDs back to the data branch ─────────────
       - name: Save VI published IDs to data branch
         if: always()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # ── Stash the freshly-written file OUTSIDE the workspace ──────────
+          UPDATED_FILE="$(mktemp /tmp/published_ids_vi_XXXX.json)"
+          cp "$GITHUB_WORKSPACE/.published_ids_vi.json" "$UPDATED_FILE"
+
+          # ── Switch to (or create) the data branch ─────────────────────────
           git fetch origin "$DATA_BRANCH" 2>/dev/null || true
           if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
             git checkout --orphan _tmp_data
@@ -256,7 +261,9 @@ jobs:
             git reset --hard
           fi
 
-          cp "$GITHUB_WORKSPACE/.published_ids_vi.json" .published_ids_vi.json
+          # ── Drop the updated file in (now safe — different path) ──────────
+          cp "$UPDATED_FILE" .published_ids_vi.json
+          rm -f "$UPDATED_FILE"
 
           git add .published_ids_vi.json
           if git diff --cached --quiet; then
