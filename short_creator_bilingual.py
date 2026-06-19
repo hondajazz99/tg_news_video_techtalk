@@ -211,7 +211,7 @@ class Config:
     # Audio
     BG_MUSIC_VOL: float = 0.12
     TTS_VOL: float = 1.0
-    TTS_SPEED_MIN: float = 1.10
+    TTS_SPEED_MIN: float = 1.25
     TTS_SPEED_MAX: float = 1.85
     TTS_PAD: float = 0.1
 
@@ -470,8 +470,15 @@ class VideoCreator:
                 test_frame = c.get_frame(0)
                 if test_frame is None or test_frame.shape[0] < 2 or test_frame.shape[1] < 2:
                     raise ValueError("decoded frame is degenerate")
-                start = random.uniform(0, max(0, c.duration - seg_dur - 0.1))
-                c = _c_subclip(c, start, min(start + seg_dur, c.duration))
+                # ── Clamp to real frame count, not header-reported duration ──
+                real_dur = c.reader.nframes / c.fps if hasattr(c, 'reader') and c.fps else c.duration
+                safe_dur = min(real_dur, c.duration) - 0.1          # 0.1 s safety margin
+                if safe_dur < 0.5:
+                    logger.warning(f"Clip too short after clamping: {cf} ({safe_dur:.2f}s) — skipping")
+                    continue
+                usable = min(seg_dur, safe_dur)
+                start = random.uniform(0, max(0, safe_dur - usable))
+                c = _c_subclip(c, start, start + usable)
                 c = _c_duration(c, seg_dur)
                 segs.append(c)
             except Exception as e:
