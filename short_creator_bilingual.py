@@ -1,6 +1,6 @@
 # short_creator_bilingual.py
 #
-# Bilingual upgrade of short_creator_.py
+# Bilingual upgrade of short_creator_2_.py
 #
 # ARCHITECTURE:
 #   1. Fetch posts from @xeonbitchannel (English)  → build EN video  → upload to YouTube EN channel
@@ -449,11 +449,21 @@ class VideoCreator:
         if not chosen:
             chosen = clip_files[:1]
         seg_dur = duration / len(chosen)
+        tw, th = self.config.OUTPUT_RESOLUTION
         segs = []
         for cf in chosen:
             try:
                 c = VideoFileClip(cf)
+                if c.w < 2 or c.h < 2 or c.duration < 0.2:
+                    raise ValueError(f"degenerate source clip ({c.w}x{c.h}, {c.duration}s)")
                 c = self._resize_clip_to_shorts(c)
+                if c.w != tw or c.h != th:
+                    raise ValueError(f"resize produced unexpected size {c.w}x{c.h}")
+                # Force-decode a frame now so corrupt files fail here, not deep
+                # inside a later transform where the error is much harder to trace.
+                test_frame = c.get_frame(0)
+                if test_frame is None or test_frame.shape[0] < 2 or test_frame.shape[1] < 2:
+                    raise ValueError("decoded frame is degenerate")
                 start = random.uniform(0, max(0, c.duration - seg_dur - 0.1))
                 c = _c_subclip(c, start, min(start + seg_dur, c.duration))
                 c = _c_duration(c, seg_dur)
