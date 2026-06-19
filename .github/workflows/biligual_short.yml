@@ -107,6 +107,30 @@ jobs:
           else
             echo "No music.mp3 found — skipping"
           fi
+        
+      - name: Re-encode B-roll clips to fix duration metadata
+        run: |
+          if [ -d clips ] && ls clips/*.mp4 clips/*.mov 2>/dev/null | head -1 > /dev/null; then
+            mkdir -p clips_fixed
+            for f in clips/*.mp4 clips/*.mov clips/*.mkv clips/*.avi clips/*.webm; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            echo "Re-encoding: $base"
+            ffmpeg -y -i "$f" \
+            -c:v libx264 -preset fast -crf 23 \
+            -c:a aac -b:a 128k \
+            -movflags +faststart \
+            -fflags +genpts \
+            clips_fixed/"${base%.*}.mp4" 2>/dev/null \
+            && echo "  OK: $base" \
+            || echo "  SKIP (error): $base"
+          done
+          rm -rf clips
+          mv clips_fixed clips
+          echo "All clips re-encoded."
+          else
+            echo "No clips found — skipping."
+          fi
       - name: Run EN pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
@@ -264,6 +288,29 @@ jobs:
           else
             echo "No music.mp3 found — skipping"
           fi
+      - name: Re-encode B-roll clips to fix duration metadata
+        run: |
+          if [ -d clips ] && ls clips/*.mp4 clips/*.mov 2>/dev/null | head -1 > /dev/null; then
+            mkdir -p clips_fixed
+            for f in clips/*.mp4 clips/*.mov clips/*.mkv clips/*.avi clips/*.webm; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            echo "Re-encoding: $base"
+            ffmpeg -y -i "$f" \
+            -c:v libx264 -preset fast -crf 23 \
+            -c:a aac -b:a 128k \
+            -movflags +faststart \
+            -fflags +genpts \
+            clips_fixed/"${base%.*}.mp4" 2>/dev/null \
+            && echo "  OK: $base" \
+            || echo "  SKIP (error): $base"
+          done
+          rm -rf clips
+          mv clips_fixed clips
+          echo "All clips re-encoded."
+          else
+            echo "No clips found — skipping."
+          fi 
       - name: Run VI pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
