@@ -124,34 +124,57 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # ── Stash the freshly-written file OUTSIDE the workspace ──────────
-          # Must do this BEFORE switching branches, because git checkout will
-          # overwrite $GITHUB_WORKSPACE and the cp source/dest become the same path.
+          # Must do this BEFORE switching branches — git checkout would overwrite
+          # $GITHUB_WORKSPACE, making cp source and dest the same file.
           UPDATED_FILE="$(mktemp /tmp/published_ids_en_XXXX.json)"
           cp "$GITHUB_WORKSPACE/.published_ids_en.json" "$UPDATED_FILE"
 
-          # ── Switch to (or create) the data branch ─────────────────────────
-          git fetch origin "$DATA_BRANCH" 2>/dev/null || true
-          if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
-            git checkout --orphan _tmp_data
-            git reset --hard
-            git checkout "origin/$DATA_BRANCH" -- . 2>/dev/null || true
-          else
-            git checkout --orphan _tmp_data
-            git reset --hard
-          fi
+          # ── Retry loop: fetch → build commit → push (up to 5 attempts) ────
+          # The VI job may push to the same branch concurrently. Each retry
+          # re-fetches so our commit is always on top of the latest remote tip.
+          MAX_TRIES=5
+          for i in $(seq 1 $MAX_TRIES); do
+            echo "--- Push attempt $i/$MAX_TRIES ---"
 
-          # ── Drop the updated file in (now safe — different path) ──────────
-          cp "$UPDATED_FILE" .published_ids_en.json
-          rm -f "$UPDATED_FILE"
+            # Always fetch the very latest tip of the data branch
+            git fetch origin "$DATA_BRANCH" 2>/dev/null || true
 
-          git add .published_ids_en.json
-          if git diff --cached --quiet; then
-            echo "No changes to .published_ids_en.json — skipping push"
-          else
+            # Build a fresh _tmp_data branch on top of the current remote tip
+            git branch -D _tmp_data 2>/dev/null || true
+            if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
+              git checkout -b _tmp_data "origin/$DATA_BRANCH"
+            else
+              git checkout --orphan _tmp_data
+              git reset --hard
+            fi
+
+            # Place the updated file (safe — $UPDATED_FILE is in /tmp)
+            cp "$UPDATED_FILE" .published_ids_en.json
+
+            git add .published_ids_en.json
+            if git diff --cached --quiet; then
+              echo "No changes to .published_ids_en.json — skipping push"
+              rm -f "$UPDATED_FILE"
+              exit 0
+            fi
+
             git commit -m "chore: update EN published IDs [run ${{ github.run_id }}]"
-            git push origin "_tmp_data:$DATA_BRANCH"
-            echo "Pushed updated EN published IDs to $DATA_BRANCH"
-          fi
+
+            # Push — will succeed if no one else pushed since our fetch
+            if git push origin "_tmp_data:$DATA_BRANCH"; then
+              echo "Pushed updated EN published IDs to $DATA_BRANCH"
+              rm -f "$UPDATED_FILE"
+              exit 0
+            fi
+
+            echo "Push rejected (concurrent write). Retrying in 5s..."
+            git checkout main 2>/dev/null || git checkout -
+            sleep 5
+          done
+
+          echo "ERROR: Failed to push after $MAX_TRIES attempts."
+          rm -f "$UPDATED_FILE"
+          exit 1
 
       - name: Upload EN video artifact (on failure, for debugging)
         if: failure()
@@ -250,29 +273,46 @@ jobs:
           UPDATED_FILE="$(mktemp /tmp/published_ids_vi_XXXX.json)"
           cp "$GITHUB_WORKSPACE/.published_ids_vi.json" "$UPDATED_FILE"
 
-          # ── Switch to (or create) the data branch ─────────────────────────
-          git fetch origin "$DATA_BRANCH" 2>/dev/null || true
-          if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
-            git checkout --orphan _tmp_data
-            git reset --hard
-            git checkout "origin/$DATA_BRANCH" -- . 2>/dev/null || true
-          else
-            git checkout --orphan _tmp_data
-            git reset --hard
-          fi
+          # ── Retry loop: fetch → build commit → push (up to 5 attempts) ────
+          MAX_TRIES=5
+          for i in $(seq 1 $MAX_TRIES); do
+            echo "--- Push attempt $i/$MAX_TRIES ---"
 
-          # ── Drop the updated file in (now safe — different path) ──────────
-          cp "$UPDATED_FILE" .published_ids_vi.json
-          rm -f "$UPDATED_FILE"
+            git fetch origin "$DATA_BRANCH" 2>/dev/null || true
 
-          git add .published_ids_vi.json
-          if git diff --cached --quiet; then
-            echo "No changes to .published_ids_vi.json — skipping push"
-          else
+            git branch -D _tmp_data 2>/dev/null || true
+            if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
+              git checkout -b _tmp_data "origin/$DATA_BRANCH"
+            else
+              git checkout --orphan _tmp_data
+              git reset --hard
+            fi
+
+            cp "$UPDATED_FILE" .published_ids_vi.json
+
+            git add .published_ids_vi.json
+            if git diff --cached --quiet; then
+              echo "No changes to .published_ids_vi.json — skipping push"
+              rm -f "$UPDATED_FILE"
+              exit 0
+            fi
+
             git commit -m "chore: update VI published IDs [run ${{ github.run_id }}]"
-            git push origin "_tmp_data:$DATA_BRANCH"
-            echo "Pushed updated VI published IDs to $DATA_BRANCH"
-          fi
+
+            if git push origin "_tmp_data:$DATA_BRANCH"; then
+              echo "Pushed updated VI published IDs to $DATA_BRANCH"
+              rm -f "$UPDATED_FILE"
+              exit 0
+            fi
+
+            echo "Push rejected (concurrent write). Retrying in 5s..."
+            git checkout main 2>/dev/null || git checkout -
+            sleep 5
+          done
+
+          echo "ERROR: Failed to push after $MAX_TRIES attempts."
+          rm -f "$UPDATED_FILE"
+          exit 1
 
       - name: Upload VI video artifact (on failure, for debugging)
         if: failure()
