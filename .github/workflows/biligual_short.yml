@@ -207,8 +207,8 @@ jobs:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
           YOUTUBE_CLIENT_SECRETS_VI:  ${{ secrets.YOUTUBE_CLIENT_SECRETS_VI }}
           # Channel / identity
-          TG_CHANNEL_VI:              "@TechTalk66"
-          TG_CHANNEL_NAME_VI:         "TechTalk66"
+          TG_CHANNEL_VI:              "@CryptoHieuQua"
+          TG_CHANNEL_NAME_VI:         "CryptoHieuQua"
           TTS_VOICE_VI:               ${{ vars.TTS_VOICE_VI || 'vi-VN-HoaiMyNeural' }}
           # Content
           DESCRIPTION_VI:             ${{ vars.DESCRIPTION_VI || 'Tin tức công nghệ và crypto bằng tiếng Việt' }}
