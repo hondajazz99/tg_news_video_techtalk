@@ -1080,7 +1080,7 @@ async def run_language_pipeline(
     # Fetch posts
     posts = telegram.get_latest_images(tg_channel, set(published_ids), max_posts=max_per_channel)
     if not posts:
-        logger.error(f"[{lang_tag}] No new content from {tg_channel}.")
+        logger.info(f"[{lang_tag}] No new content from {tg_channel} — nothing to publish this run.")
         return False
 
     logger.info(f"[{lang_tag}] {len(posts)} post(s) collected. Building 59s short...")
@@ -1255,8 +1255,8 @@ async def _main():
         if run_vi:
             await run_language_pipeline(
                 lang="vi",
-                tg_channel=os.getenv("TG_CHANNEL_VI", "@Techtalk66"),
-                tg_channel_name=os.getenv("TG_CHANNEL_NAME_VI", "Techtalk66"),
+                tg_channel=os.getenv("TG_CHANNEL_VI", "@TechTalk66"),
+                tg_channel_name=os.getenv("TG_CHANNEL_NAME_VI", "TechTalk66"),
                 tts_voice=os.getenv("TTS_VOICE_VI", "vi-VN-HoaiMyNeural"),
                 yt_secrets=yt_secrets_vi,
                 published_ids_file=os.getenv("PUBLISHED_IDS_FILE_VI", ".published_ids_vi.json"),
