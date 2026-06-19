@@ -1,2 +1,4 @@
 # Runtime state — managed by GitHub Actions cache
 .published_ids.json
+.published-ids-en.json
+.published-ids-vi.json
