@@ -387,3 +387,422 @@ sudo apt-get install fonts-dejavu-core fonts-freefont-ttf
 pip install scipy
 ```
 Without it the script logs a warning and disables wiggle/zoom-pulse effects but still produces a valid video.
+
+# 📱 Bilingual YouTube Shorts Creator
+
+Automatically fetch images and captions from Telegram channels, render them into vertical YouTube Shorts (1080×1920) with TTS narration, background music, and Ken Burns / jump-cut effects — then upload to YouTube on a schedule.
+
+**Two fully independent pipelines run in parallel:**
+
+| Pipeline | Telegram source | YouTube target | TTS voice |
+|---|---|---|---|
+| 🇬🇧 English | `@xeonbitchannel` | EN channel | `en-SG-LunaNeural` |
+| 🇻🇳 Vietnamese | `@CryptoHieuQua` | VI channel | `vi-VN-HoaiMyNeural` |
+
+---
+
+## Table of Contents
+
+1. [Prerequisites](#1-prerequisites)
+2. [Fork & Clone the Repository](#2-fork--clone-the-repository)
+3. [Prepare Your Repository Files](#3-prepare-your-repository-files)
+4. [Get a Telegram Bot Token](#4-get-a-telegram-bot-token)
+5. [Set Up YouTube OAuth Credentials](#5-set-up-youtube-oauth-credentials)
+6. [Configure GitHub Secrets](#6-configure-github-secrets)
+7. [Configure GitHub Variables (Optional)](#7-configure-github-variables-optional)
+8. [Add the Workflow File](#8-add-the-workflow-file)
+9. [Run the Workflow](#9-run-the-workflow)
+10. [Schedule (Automatic Runs)](#10-schedule-automatic-runs)
+11. [Customisation Reference](#11-customisation-reference)
+12. [Troubleshooting](#12-troubleshooting)
+
+---
+
+## 1. Prerequisites
+
+Before you start, make sure you have:
+
+- A **GitHub account** (free tier is fine)
+- A **Telegram Bot** with access to both channels
+- Two **Google / YouTube accounts** — one per language channel
+- `brand_logo.png` — your brand logo (PNG with transparency recommended)
+- `music.mp3` — background music file (royalty-free)
+- Optionally, a `clips/` folder containing `.mp4` / `.mov` B-roll video files
+
+---
+
+## 2. Fork & Clone the Repository
+
+### 2a. Create a new GitHub repository
+
+1. Go to [github.com/new](https://github.com/new)
+2. Name it, e.g. `bilingual-shorts-creator`
+3. Set visibility to **Private** (recommended — your secrets stay safe)
+4. Click **Create repository**
+
+### 2b. Clone it locally
+
+```bash
+git clone https://github.com/YOUR_USERNAME/bilingual-shorts-creator.git
+cd bilingual-shorts-creator
+```
+
+---
+
+## 3. Prepare Your Repository Files
+
+Your repository must contain the following files:
+
+```
+bilingual-shorts-creator/
+├── short_creator_bilingual.py   ← main Python script
+├── .github/
+│   └── workflows/
+│       └── bilingual_short.yml  ← GitHub Actions workflow
+├── brand_logo.png               ← your brand logo
+├── music.mp3                    ← background music
+└── clips/                       ← (optional) B-roll video clips
+    ├── clip1.mp4
+    └── clip2.mp4
+```
+
+### 3a. Add the Python script
+
+Copy `short_creator_bilingual.py` into the root of your repository.
+
+### 3b. Create the workflow directory and file
+
+```bash
+mkdir -p .github/workflows
+```
+
+Copy `bilingual_short.yml` into `.github/workflows/`.
+
+### 3c. Add your brand assets
+
+Place `brand_logo.png` and `music.mp3` in the repository root.
+
+> **Logo tip:** Use a PNG with a transparent background at roughly 500×200 px. The script will scale it to 20% of the video width automatically.
+
+### 3d. Commit and push everything
+
+```bash
+git add .
+git commit -m "Initial setup"
+git push origin main
+```
+
+---
+
+## 4. Get a Telegram Bot Token
+
+### 4a. Create a bot
+
+1. Open Telegram and search for **@BotFather**
+2. Send `/newbot`
+3. Follow the prompts — choose a name and username
+4. Copy the **token** (looks like `123456789:ABCdef...`)
+
+### 4b. Add the bot to your channels
+
+For **each** of the two Telegram channels (`@xeonbitchannel` and `@CryptoHieuQua` or your own):
+
+1. Open the channel settings → **Administrators**
+2. Add your bot as an administrator
+3. Grant at minimum: **Read Messages** permission
+
+### 4c. Verify the bot can see updates
+
+Open this URL in a browser (replace `YOUR_TOKEN`):
+
+```
+https://api.telegram.org/botYOUR_TOKEN/getUpdates
+```
+
+You should see recent channel posts in the JSON response.
+
+---
+
+## 5. Set Up YouTube OAuth Credentials
+
+You need **separate credentials** for each YouTube channel (EN and VI). Repeat these steps twice.
+
+### 5a. Create a Google Cloud project
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Click the project dropdown → **New Project**
+3. Name it, e.g. `shorts-creator-en`, then click **Create**
+
+### 5b. Enable the YouTube Data API
+
+1. In your project, go to **APIs & Services → Library**
+2. Search for **YouTube Data API v3**
+3. Click **Enable**
+
+### 5c. Configure the OAuth consent screen
+
+1. Go to **APIs & Services → OAuth consent screen**
+2. Choose **External** → **Create**
+3. Fill in the required fields (App name, support email)
+4. Under **Scopes**, click **Add or Remove Scopes** and add:
+   - `https://www.googleapis.com/auth/youtube.upload`
+   - `https://www.googleapis.com/auth/youtube`
+5. Add your Google account email under **Test users**
+6. Save and continue through all steps
+
+### 5d. Create OAuth 2.0 credentials
+
+1. Go to **APIs & Services → Credentials**
+2. Click **Create Credentials → OAuth 2.0 Client IDs**
+3. Application type: **Desktop app**
+4. Name it, e.g. `shorts-creator-en-desktop`
+5. Click **Create**
+6. Click **Download JSON** — this is your client secrets file
+
+### 5e. Generate a refresh token locally
+
+The workflow needs a refresh token so it can upload without interactive login. Run this on your local machine:
+
+```bash
+pip install google-auth-oauthlib google-api-python-client
+
+python - <<'EOF'
+import json
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube",
+]
+
+flow = InstalledAppFlow.from_client_secrets_file("client_secrets_en.json", SCOPES)
+creds = flow.run_local_server(port=0)
+
+output = {
+    "client_id":     creds.client_id,
+    "client_secret": creds.client_secret,
+    "refresh_token": creds.refresh_token,
+    "token_uri":     "https://oauth2.googleapis.com/token",
+    "scopes":        list(creds.scopes),
+}
+print(json.dumps(output, indent=2))
+EOF
+```
+
+A browser window will open — log in with the YouTube account you want to upload to. Copy the printed JSON — you will paste it as a GitHub Secret in the next step.
+
+Repeat this process for the **VI channel** using `client_secrets_vi.json`.
+
+---
+
+## 6. Configure GitHub Secrets
+
+Go to your repository on GitHub → **Settings → Secrets and variables → Actions → Secrets**.
+
+Click **New repository secret** for each of the following:
+
+| Secret name | Value |
+|---|---|
+| `TELEGRAM_TOKEN` | Your Telegram bot token from Step 4 |
+| `YOUTUBE_CLIENT_SECRETS_EN` | Full JSON from Step 5e for the EN channel |
+| `YOUTUBE_CLIENT_SECRETS_VI` | Full JSON from Step 5e for the VI channel |
+
+> **Important:** Paste the entire JSON object as the secret value — including the curly braces `{ }`.
+
+Example value for `YOUTUBE_CLIENT_SECRETS_EN`:
+```json
+{
+  "client_id": "123456789-abc.apps.googleusercontent.com",
+  "client_secret": "GOCSPX-...",
+  "refresh_token": "1//0g...",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "scopes": ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"]
+}
+```
+
+---
+
+## 7. Configure GitHub Variables (Optional)
+
+These are non-sensitive values you can customise. Go to **Settings → Secrets and variables → Actions → Variables**.
+
+### English pipeline
+
+| Variable | Default | Description |
+|---|---|---|
+| `TTS_VOICE_EN` | `en-SG-LunaNeural` | Edge TTS voice for EN |
+| `DESCRIPTION_EN` | `Latest crypto & tech news in English` | YouTube video description |
+| `TAGS_EN` | `["Shorts","Crypto","Bitcoin","Tech","News"]` | YouTube tags (JSON array) |
+| `BRAND_HASHTAGS_EN` | `["xeonbit24","xeonbit24.com"]` | Hashtags appended to title |
+| `OUTRO_CTA_EN` | `Follow for latest crypto news. Like & Subscribe!` | Outro text overlay |
+| `INTRO_LABEL_EN` | `BREAKING` | Badge label on intro screen |
+| `PLAYLIST_ID_EN` | _(empty)_ | YouTube playlist ID to add videos to |
+
+### Vietnamese pipeline
+
+| Variable | Default | Description |
+|---|---|---|
+| `TTS_VOICE_VI` | `vi-VN-HoaiMyNeural` | Edge TTS voice for VI |
+| `DESCRIPTION_VI` | `Tin tức công nghệ và crypto bằng tiếng Việt` | YouTube video description |
+| `TAGS_VI` | `["Shorts","CryptoViet","TinTuc","CongNghe"]` | YouTube tags (JSON array) |
+| `BRAND_HASHTAGS_VI` | `["techtalk66","techtalk"]` | Hashtags appended to title |
+| `OUTRO_CTA_VI` | `Theo dõi để cập nhật tin tức mới nhất. Like & Đăng ký!` | Outro text overlay |
+| `INTRO_LABEL_VI` | `TIN MỚI` | Badge label on intro screen |
+| `PLAYLIST_ID_VI` | _(empty)_ | YouTube playlist ID to add videos to |
+
+---
+
+## 8. Add the Workflow File
+
+Confirm your workflow file is at `.github/workflows/bilingual_short.yml` and has been pushed to `main`. GitHub will automatically detect it.
+
+To verify: go to your repository → **Actions** tab. You should see **"Bilingual YouTube Shorts Creator"** listed.
+
+---
+
+## 9. Run the Workflow
+
+### Manual run (recommended for first test)
+
+1. Go to **Actions → Bilingual YouTube Shorts Creator**
+2. Click **Run workflow**
+3. Fill in the inputs:
+
+| Input | Options | Recommended for first run |
+|---|---|---|
+| `pipeline` | `both` / `en_only` / `vi_only` | `en_only` (test one at a time) |
+| `max_posts` | 1–10 | `1` |
+| `privacy` | `private` / `public` / `unlisted` | `private` |
+| `publish_delay_hours` | Any number | `0` |
+
+4. Click **Run workflow** (green button)
+5. Click the running job to watch the live logs
+
+A successful run will:
+- Fetch the latest image post from the Telegram channel
+- Generate a TTS audio file
+- Render a 1080×1920 Short with music, overlays, and captions
+- Upload the video to YouTube (as private by default)
+- Save the processed post ID to the `data/published-ids` branch so it isn't reused
+
+---
+
+## 10. Schedule (Automatic Runs)
+
+The workflow runs automatically three times per day (ICT timezone):
+
+| UTC cron | ICT time |
+|---|---|
+| `0 2 * * *` | 09:00 |
+| `0 8 * * *` | 15:00 |
+| `0 14 * * *` | 21:00 |
+
+To change the schedule, edit the `cron` entries in `bilingual_short.yml`:
+
+```yaml
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 09:00 ICT
+    - cron: '0 8 * * *'   # 15:00 ICT
+    - cron: '0 14 * * *'  # 21:00 ICT
+```
+
+> **Note:** GitHub Actions schedules can be delayed by up to 15 minutes during peak times.
+
+---
+
+## 11. Customisation Reference
+
+### Change the Telegram source channel
+
+Edit the workflow's `Run EN pipeline` / `Run VI pipeline` steps and update:
+
+```yaml
+TG_CHANNEL_EN: "@your_channel_username"
+TG_CHANNEL_NAME_EN: "your_channel_username"
+```
+
+### Adjust video timeline durations
+
+Add these as GitHub Variables or set them directly in the workflow env:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DUR_MAIN` | `11.0` | Intro card duration (seconds) |
+| `DUR_CLIPA` | `15.0` | First B-roll segment |
+| `DUR_FLASH` | `6.0` | Flash transition segment |
+| `DUR_CLIPB` | `15.0` | Second B-roll segment |
+| `DUR_SUMMARY` | `6.0` | Summary card |
+| `DUR_OUTRO` | `6.0` | Outro / CTA card |
+
+### Adjust audio levels
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BG_MUSIC_VOL` | `0.12` | Background music volume (0.0–1.0) |
+| `TTS_VOL` | `1.0` | TTS narration volume |
+
+### Use a different logo per language
+
+Place two logo files in the repo root and set:
+
+```yaml
+LOGO_PATH_EN: "brand_logo_en.png"
+LOGO_PATH_VI: "brand_logo_vi.png"
+```
+
+### Use separate B-roll clips per language
+
+```yaml
+CLIPS_DIR_EN: "clips/en"
+CLIPS_DIR_VI: "clips/vi"
+```
+
+---
+
+## 12. Troubleshooting
+
+**No posts fetched from Telegram**
+- Confirm the bot is an administrator of both channels
+- Check `getUpdates` manually (Step 4c) — if the result array is empty, send a test message to the channel
+- The bot only sees posts sent *after* it was added as admin
+
+**YouTube upload fails with `invalid_grant`**
+- Your refresh token has expired. Repeat Step 5e to generate a new one and update the GitHub Secret
+
+**`YOUTUBE_CLIENT_SECRETS_EN must be configured` error**
+- The secret value is empty or malformed JSON. Paste the full JSON object (Step 6)
+
+**Video is generated but has no B-roll clips (black background segments)**
+- Add `.mp4` or `.mov` files to the `clips/` directory in your repository
+- Or set `CLIPS_DIR_EN` / `CLIPS_DIR_VI` to a folder that exists
+
+**Font rendering issues (Vietnamese characters appear as boxes)**
+- The VI pipeline installs `fonts-noto` automatically. If running locally, install it:
+  ```bash
+  sudo apt-get install fonts-noto
+  fc-cache -f
+  ```
+
+**Concurrent push conflict on `data/published-ids` branch**
+- This is handled automatically with a 5-attempt retry loop. If it fails after 5 attempts, re-run the workflow manually — no data is lost
+
+**Workflow never triggers on schedule**
+- GitHub disables scheduled workflows on repositories with no activity for 60 days. Make any commit to re-enable, or use **Run workflow** manually to keep the repo active
+
+---
+
+## Data Branch
+
+Published post IDs are stored in a separate Git branch called `data/published-ids` to avoid cluttering your `main` branch history. Two files are maintained:
+
+- `.published_ids_en.json` — IDs of EN posts already turned into videos
+- `.published_ids_vi.json` — IDs of VI posts already turned into videos
+
+Each file holds the last **30** processed IDs. Older IDs are pruned automatically.
+
+---
+
+## License
+
+MIT — do whatever you like, just don't hold the author liable.
