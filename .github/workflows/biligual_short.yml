@@ -113,24 +113,25 @@ jobs:
           if [ -d clips ] && ls clips/*.mp4 clips/*.mov 2>/dev/null | head -1 > /dev/null; then
             mkdir -p clips_fixed
             for f in clips/*.mp4 clips/*.mov clips/*.mkv clips/*.avi clips/*.webm; do
-            [ -f "$f" ] || continue
-            base=$(basename "$f")
-            echo "Re-encoding: $base"
-            ffmpeg -y -i "$f" \
-            -c:v libx264 -preset fast -crf 23 \
-            -c:a aac -b:a 128k \
-            -movflags +faststart \
-            -fflags +genpts \
-            clips_fixed/"${base%.*}.mp4" 2>/dev/null \
-            && echo "  OK: $base" \
-            || echo "  SKIP (error): $base"
-          done
-          rm -rf clips
-          mv clips_fixed clips
-          echo "All clips re-encoded."
+              [ -f "$f" ] || continue
+              base=$(basename "$f")
+              echo "Re-encoding: $base"
+              ffmpeg -y -i "$f" \
+                -c:v libx264 -preset fast -crf 23 \
+                -c:a aac -b:a 128k \
+                -movflags +faststart \
+                -fflags +genpts \
+                clips_fixed/"${base%.*}.mp4" 2>/dev/null \
+                && echo "  OK: $base" \
+                || echo "  SKIP (error): $base"
+            done
+            rm -rf clips
+            mv clips_fixed clips
+            echo "All clips re-encoded."
           else
             echo "No clips found — skipping."
           fi
+
       - name: Run EN pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
@@ -176,6 +177,12 @@ jobs:
 
             # Build a fresh _tmp_data branch on top of the current remote tip
             git branch -D _tmp_data 2>/dev/null || true
+
+            # ── Discard workspace changes so checkout never aborts ────────────
+            git stash --include-untracked 2>/dev/null || git checkout -- . 2>/dev/null || true
+            git clean -fd 2>/dev/null || true
+            # ─────────────────────────────────────────────────────────────────
+
             if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
               git checkout -b _tmp_data "origin/$DATA_BRANCH"
             else
@@ -293,24 +300,25 @@ jobs:
           if [ -d clips ] && ls clips/*.mp4 clips/*.mov 2>/dev/null | head -1 > /dev/null; then
             mkdir -p clips_fixed
             for f in clips/*.mp4 clips/*.mov clips/*.mkv clips/*.avi clips/*.webm; do
-            [ -f "$f" ] || continue
-            base=$(basename "$f")
-            echo "Re-encoding: $base"
-            ffmpeg -y -i "$f" \
-            -c:v libx264 -preset fast -crf 23 \
-            -c:a aac -b:a 128k \
-            -movflags +faststart \
-            -fflags +genpts \
-            clips_fixed/"${base%.*}.mp4" 2>/dev/null \
-            && echo "  OK: $base" \
-            || echo "  SKIP (error): $base"
-          done
-          rm -rf clips
-          mv clips_fixed clips
-          echo "All clips re-encoded."
+              [ -f "$f" ] || continue
+              base=$(basename "$f")
+              echo "Re-encoding: $base"
+              ffmpeg -y -i "$f" \
+                -c:v libx264 -preset fast -crf 23 \
+                -c:a aac -b:a 128k \
+                -movflags +faststart \
+                -fflags +genpts \
+                clips_fixed/"${base%.*}.mp4" 2>/dev/null \
+                && echo "  OK: $base" \
+                || echo "  SKIP (error): $base"
+            done
+            rm -rf clips
+            mv clips_fixed clips
+            echo "All clips re-encoded."
           else
             echo "No clips found — skipping."
-          fi 
+          fi
+
       - name: Run VI pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
@@ -350,6 +358,12 @@ jobs:
             git fetch origin "$DATA_BRANCH" 2>/dev/null || true
 
             git branch -D _tmp_data 2>/dev/null || true
+
+            # ── Discard workspace changes so checkout never aborts ────────────
+            git stash --include-untracked 2>/dev/null || git checkout -- . 2>/dev/null || true
+            git clean -fd 2>/dev/null || true
+            # ─────────────────────────────────────────────────────────────────
+
             if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
               git checkout -b _tmp_data "origin/$DATA_BRANCH"
             else
