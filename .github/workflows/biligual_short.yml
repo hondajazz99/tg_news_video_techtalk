@@ -37,6 +37,8 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
+  # Branch where .published_ids_*.json files live (never deleted, append-only)
+  DATA_BRANCH: 'data/published-ids'
 
 jobs:
   # ════════════════════════════════════════════════════════════════════
@@ -45,6 +47,8 @@ jobs:
   create_en_short:
     name: 'EN — @xeonbitchannel → YouTube EN'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed so git push to data branch works
     if: >
       github.event_name != 'workflow_dispatch' ||
       inputs.pipeline == 'both' ||
@@ -53,8 +57,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        # music.mp3, brand_logo.png are committed to the repo root
-        # and will be present after checkout — no secrets needed for them
+
+      # ── Pull the persisted EN published-IDs from the data branch ──────────
+      - name: Restore EN published IDs from data branch
+        run: |
+          git fetch origin "$DATA_BRANCH" 2>/dev/null || true
+          if git show "origin/$DATA_BRANCH:.published_ids_en.json" 2>/dev/null \
+              > .published_ids_en.json; then
+            echo "Restored .published_ids_en.json ($(wc -c < .published_ids_en.json) bytes)"
+          else
+            echo "No existing file — starting fresh"
+            echo "[]" > .published_ids_en.json
+          fi
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -84,47 +98,58 @@ jobs:
             "google-auth-oauthlib==1.*" \
             "google-api-python-client==2.*"
 
-      - name: Restore EN published IDs
-        uses: actions/cache@v4
-        with:
-          path: .published_ids_en.json
-          key: published-ids-en-${{ github.run_id }}
-          restore-keys: published-ids-en-
-
-      # ── Clips: optional secret — unpack into clips/ if provided ───────
-      #- name: Restore EN clips from secret (optional)
-      #  if: ${{ secrets.CLIPS_EN_B64 != '' }}
-      #  run: |
-      #    mkdir -p clips
-      #    echo "$CLIPS_EN_B64" | base64 -d | tar -xzf - -C clips/
-      #  env:
-      #    CLIPS_EN_B64: ${{ secrets.CLIPS_EN_B64 }}
-
       - name: Run EN pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
           YOUTUBE_CLIENT_SECRETS_EN:  ${{ secrets.YOUTUBE_CLIENT_SECRETS_EN }}
-          # Channel / identity
           TG_CHANNEL_EN:              "@xeonbitchannel"
           TG_CHANNEL_NAME_EN:         "xeonbitchannel"
           TTS_VOICE_EN:               ${{ vars.TTS_VOICE_EN || 'en-SG-LunaNeural' }}
-          # Content
           DESCRIPTION_EN:             ${{ vars.DESCRIPTION_EN || 'Latest crypto & tech news in English' }}
           TAGS_EN:                    ${{ vars.TAGS_EN || '["Shorts","Crypto","Bitcoin","Tech","News"]' }}
           BRAND_HASHTAGS_EN:          ${{ vars.BRAND_HASHTAGS_EN || '["xeonbit24","xeonbit24.com"]' }}
           OUTRO_CTA_EN:               ${{ vars.OUTRO_CTA_EN || 'Follow for latest crypto news. Like & Subscribe!' }}
           INTRO_LABEL_EN:             ${{ vars.INTRO_LABEL_EN || 'BREAKING' }}
-          # YouTube
           PLAYLIST_ID_EN:             ${{ vars.PLAYLIST_ID_EN || '' }}
           PUBLISH_DELAY_HOURS_EN:     ${{ inputs.publish_delay_hours || '1' }}
           PRIVACY_STATUS:             ${{ inputs.privacy || 'private' }}
-          # Assets — all in repo root, clips optional
           MUSIC_OPTION:               "music.mp3"
           LOGO_PATH_EN:               "brand_logo.png"
           CLIPS_DIR_EN:               "clips"
-          # Runtime
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
         run: python short_creator_bilingual.py --lang en
+
+      # ── Push updated EN published-IDs back to the data branch ─────────────
+      - name: Save EN published IDs to data branch
+        if: always()   # save even if the pipeline step above had a partial failure
+        run: |
+          # Configure git identity for the push
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Switch to (or create) the data branch without touching the working tree
+          git fetch origin "$DATA_BRANCH" 2>/dev/null || true
+          if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
+            git checkout --orphan _tmp_data
+            git reset --hard
+            git checkout "origin/$DATA_BRANCH" -- . 2>/dev/null || true
+          else
+            git checkout --orphan _tmp_data
+            git reset --hard
+          fi
+
+          # Copy the freshly-written IDs file into the data branch tree
+          cp "$GITHUB_WORKSPACE/.published_ids_en.json" .published_ids_en.json
+
+          git add .published_ids_en.json
+          # Only commit+push if there is actually something new
+          if git diff --cached --quiet; then
+            echo "No changes to .published_ids_en.json — skipping push"
+          else
+            git commit -m "chore: update EN published IDs [run ${{ github.run_id }}]"
+            git push origin "_tmp_data:$DATA_BRANCH"
+            echo "Pushed updated EN published IDs to $DATA_BRANCH"
+          fi
 
       - name: Upload EN video artifact (on failure, for debugging)
         if: failure()
@@ -135,19 +160,14 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-      - name: Save EN published IDs
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: .published_ids_en.json
-          key: published-ids-en-${{ github.run_id }}
-
   # ════════════════════════════════════════════════════════════════════
-  # Job 2 – Vietnamese pipeline  (@Techtalk66 → YouTube VI channel)
+  # Job 2 – Vietnamese pipeline  (@CryptoHieuQua → YouTube VI channel)
   # ════════════════════════════════════════════════════════════════════
   create_vi_short:
-    name: 'VI — @Techtalk66 → YouTube VI'
+    name: 'VI — @CryptoHieuQua → YouTube VI'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: >
       github.event_name != 'workflow_dispatch' ||
       inputs.pipeline == 'both' ||
@@ -156,6 +176,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # ── Pull the persisted VI published-IDs from the data branch ──────────
+      - name: Restore VI published IDs from data branch
+        run: |
+          git fetch origin "$DATA_BRANCH" 2>/dev/null || true
+          if git show "origin/$DATA_BRANCH:.published_ids_vi.json" 2>/dev/null \
+              > .published_ids_vi.json; then
+            echo "Restored .published_ids_vi.json ($(wc -c < .published_ids_vi.json) bytes)"
+          else
+            echo "No existing file — starting fresh"
+            echo "[]" > .published_ids_vi.json
+          fi
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -186,47 +218,54 @@ jobs:
             "google-auth-oauthlib==1.*" \
             "google-api-python-client==2.*"
 
-      - name: Restore VI published IDs
-        uses: actions/cache@v4
-        with:
-          path: .published_ids_vi.json
-          key: published-ids-vi-${{ github.run_id }}
-          restore-keys: published-ids-vi-
-
-      # ── Clips: optional secret — unpack into clips/ if provided ───────
-      #- name: Restore VI clips from secret (optional)
-      #  if: ${{ secrets.CLIPS_VI_B64 != '' }}
-      #  run: |
-      #    mkdir -p clips
-      #    echo "$CLIPS_VI_B64" | base64 -d | tar -xzf - -C clips/
-      #  env:
-      #    CLIPS_VI_B64: ${{ secrets.CLIPS_VI_B64 }}
-
       - name: Run VI pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
           YOUTUBE_CLIENT_SECRETS_VI:  ${{ secrets.YOUTUBE_CLIENT_SECRETS_VI }}
-          # Channel / identity
           TG_CHANNEL_VI:              "@CryptoHieuQua"
           TG_CHANNEL_NAME_VI:         "CryptoHieuQua"
           TTS_VOICE_VI:               ${{ vars.TTS_VOICE_VI || 'vi-VN-HoaiMyNeural' }}
-          # Content
           DESCRIPTION_VI:             ${{ vars.DESCRIPTION_VI || 'Tin tức công nghệ và crypto bằng tiếng Việt' }}
           TAGS_VI:                    ${{ vars.TAGS_VI || '["Shorts","CryptoViet","TinTuc","CongNghe"]' }}
           BRAND_HASHTAGS_VI:          ${{ vars.BRAND_HASHTAGS_VI || '["techtalk66","techtalk"]' }}
           OUTRO_CTA_VI:               ${{ vars.OUTRO_CTA_VI || 'Theo dõi để cập nhật tin tức mới nhất. Like & Đăng ký!' }}
           INTRO_LABEL_VI:             ${{ vars.INTRO_LABEL_VI || 'TIN MỚI' }}
-          # YouTube
           PLAYLIST_ID_VI:             ${{ vars.PLAYLIST_ID_VI || '' }}
           PUBLISH_DELAY_HOURS_VI:     ${{ inputs.publish_delay_hours || '1' }}
           PRIVACY_STATUS:             ${{ inputs.privacy || 'private' }}
-          # Assets — all in repo root, clips optional
           MUSIC_OPTION:               "music.mp3"
           LOGO_PATH_VI:               "brand_logo.png"
           CLIPS_DIR_VI:               "clips"
-          # Runtime
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
         run: python short_creator_bilingual.py --lang vi
+
+      # ── Push updated VI published-IDs back to the data branch ─────────────
+      - name: Save VI published IDs to data branch
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin "$DATA_BRANCH" 2>/dev/null || true
+          if git ls-remote --exit-code origin "$DATA_BRANCH" > /dev/null 2>&1; then
+            git checkout --orphan _tmp_data
+            git reset --hard
+            git checkout "origin/$DATA_BRANCH" -- . 2>/dev/null || true
+          else
+            git checkout --orphan _tmp_data
+            git reset --hard
+          fi
+
+          cp "$GITHUB_WORKSPACE/.published_ids_vi.json" .published_ids_vi.json
+
+          git add .published_ids_vi.json
+          if git diff --cached --quiet; then
+            echo "No changes to .published_ids_vi.json — skipping push"
+          else
+            git commit -m "chore: update VI published IDs [run ${{ github.run_id }}]"
+            git push origin "_tmp_data:$DATA_BRANCH"
+            echo "Pushed updated VI published IDs to $DATA_BRANCH"
+          fi
 
       - name: Upload VI video artifact (on failure, for debugging)
         if: failure()
@@ -236,10 +275,3 @@ jobs:
           path: output_short_vi.mp4
           retention-days: 1
           if-no-files-found: ignore
-
-      - name: Save VI published IDs
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: .published_ids_vi.json
-          key: published-ids-vi-${{ github.run_id }}
