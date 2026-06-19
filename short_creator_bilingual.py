@@ -1,6 +1,6 @@
 # short_creator_bilingual.py
 #
-# Bilingual upgrade of short_creator_2_.py
+# Bilingual upgrade of short_creator_.py
 #
 # ARCHITECTURE:
 #   1. Fetch posts from @xeonbitchannel (English)  → build EN video  → upload to YouTube EN channel
@@ -34,6 +34,7 @@
 # All original shared env vars (TELEGRAM_TOKEN, MUSIC_OPTION, font paths,
 # timeline durations, BG_MUSIC_VOL, etc.) continue to work as shared defaults.
 
+import argparse
 import asyncio
 import os
 import json
@@ -1154,17 +1155,32 @@ def _shared_overrides() -> dict:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Bilingual Telegram-to-Shorts pipeline")
+    parser.add_argument(
+        "--lang",
+        choices=["en", "vi", "both"],
+        default=os.getenv("RUN_LANG", "both"),
+        help="Which language pipeline to run (default: both)",
+    )
+    return parser.parse_args()
+
+
 async def _main():
     try:
+        args = _parse_args()
+        run_en = args.lang in ("en", "both")
+        run_vi = args.lang in ("vi", "both")
+
         token = os.getenv("TELEGRAM_TOKEN")
         if not token:
             raise ValueError("TELEGRAM_TOKEN is required")
 
-        yt_secrets_en = get_env_json("YOUTUBE_CLIENT_SECRETS_EN", "{}")
-        yt_secrets_vi = get_env_json("YOUTUBE_CLIENT_SECRETS_VI", "{}")
-        if not yt_secrets_en:
+        yt_secrets_en = get_env_json("YOUTUBE_CLIENT_SECRETS_EN", "{}") if run_en else {}
+        yt_secrets_vi = get_env_json("YOUTUBE_CLIENT_SECRETS_VI", "{}") if run_vi else {}
+        if run_en and not yt_secrets_en:
             raise ValueError("YOUTUBE_CLIENT_SECRETS_EN must be configured")
-        if not yt_secrets_vi:
+        if run_vi and not yt_secrets_vi:
             raise ValueError("YOUTUBE_CLIENT_SECRETS_VI must be configured")
 
         telegram        = TelegramClient(token)
@@ -1172,6 +1188,8 @@ async def _main():
         shared          = _shared_overrides()
 
         # ── English pipeline ─────────────────────────────────────────────
+        if not run_en:
+            logger.info("Skipping EN pipeline (--lang %s)", args.lang)
         en_overrides = {
             **shared,
             "DESCRIPTION":         os.getenv("DESCRIPTION_EN",
@@ -1190,19 +1208,22 @@ async def _main():
                                             "Follow for latest crypto news. Like & Subscribe!"),
             "INTRO_LABEL":         os.getenv("INTRO_LABEL_EN", "BREAKING"),
         }
-        await run_language_pipeline(
-            lang="en",
-            tg_channel=os.getenv("TG_CHANNEL_EN", "@xeonbitchannel"),
-            tg_channel_name=os.getenv("TG_CHANNEL_NAME_EN", "xeonbitchannel"),
-            tts_voice=os.getenv("TTS_VOICE_EN", "en-SG-LunaNeural"),
-            yt_secrets=yt_secrets_en,
-            published_ids_file=os.getenv("PUBLISHED_IDS_FILE_EN", ".published_ids_en.json"),
-            config_overrides=en_overrides,
-            telegram=telegram,
-            max_per_channel=max_per_channel,
-        )
+        if run_en:
+            await run_language_pipeline(
+                lang="en",
+                tg_channel=os.getenv("TG_CHANNEL_EN", "@xeonbitchannel"),
+                tg_channel_name=os.getenv("TG_CHANNEL_NAME_EN", "xeonbitchannel"),
+                tts_voice=os.getenv("TTS_VOICE_EN", "en-SG-LunaNeural"),
+                yt_secrets=yt_secrets_en,
+                published_ids_file=os.getenv("PUBLISHED_IDS_FILE_EN", ".published_ids_en.json"),
+                config_overrides=en_overrides,
+                telegram=telegram,
+                max_per_channel=max_per_channel,
+            )
 
         # ── Vietnamese pipeline ───────────────────────────────────────────
+        if not run_vi:
+            logger.info("Skipping VI pipeline (--lang %s)", args.lang)
         vi_overrides = {
             **shared,
             "DESCRIPTION":         os.getenv("DESCRIPTION_VI",
@@ -1221,19 +1242,21 @@ async def _main():
                                             "Theo dõi để cập nhật tin tức mới nhất. Like & Đăng ký!"),
             "INTRO_LABEL":         os.getenv("INTRO_LABEL_VI", "TIN MỚI"),
         }
-        await run_language_pipeline(
-            lang="vi",
-            tg_channel=os.getenv("TG_CHANNEL_VI", "@Techtalk66"),
-            tg_channel_name=os.getenv("TG_CHANNEL_NAME_VI", "Techtalk66"),
-            tts_voice=os.getenv("TTS_VOICE_VI", "vi-VN-HoaiMyNeural"),
-            yt_secrets=yt_secrets_vi,
-            published_ids_file=os.getenv("PUBLISHED_IDS_FILE_VI", ".published_ids_vi.json"),
-            config_overrides=vi_overrides,
-            telegram=telegram,
-            max_per_channel=max_per_channel,
-        )
+        if run_vi:
+            await run_language_pipeline(
+                lang="vi",
+                tg_channel=os.getenv("TG_CHANNEL_VI", "@Techtalk66"),
+                tg_channel_name=os.getenv("TG_CHANNEL_NAME_VI", "Techtalk66"),
+                tts_voice=os.getenv("TTS_VOICE_VI", "vi-VN-HoaiMyNeural"),
+                yt_secrets=yt_secrets_vi,
+                published_ids_file=os.getenv("PUBLISHED_IDS_FILE_VI", ".published_ids_vi.json"),
+                config_overrides=vi_overrides,
+                telegram=telegram,
+                max_per_channel=max_per_channel,
+            )
 
-        logger.info("\n✓ Both EN and VI pipelines completed.")
+        ran = (["EN"] if run_en else []) + (["VI"] if run_vi else [])
+        logger.info("\n✓ %s pipeline(s) completed.", " + ".join(ran))
 
     except SystemExit:
         raise
