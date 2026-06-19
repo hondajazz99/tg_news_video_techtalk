@@ -95,7 +95,18 @@ jobs:
             "google-auth==2.*" \
             "google-auth-oauthlib==1.*" \
             "google-api-python-client==2.*"
-
+      - name: Sanitise music.mp3
+        run: |
+          if [ -f music.mp3 ]; then
+            ffmpeg -y -i music.mp3 \
+            -ar 44100 -ac 2 -b:a 192k \
+            -avoid_negative_ts make_zero \
+            music_sanitised.mp3
+            mv music_sanitised.mp3 music.mp3
+            echo "music.mp3 re-encoded OK"
+          else
+            echo "No music.mp3 found — skipping"
+          fi
       - name: Run EN pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
@@ -241,7 +252,18 @@ jobs:
             "google-auth==2.*" \
             "google-auth-oauthlib==1.*" \
             "google-api-python-client==2.*"
-
+      - name: Sanitise music.mp3
+        run: |
+          if [ -f music.mp3 ]; then
+            ffmpeg -y -i music.mp3 \
+            -ar 44100 -ac 2 -b:a 192k \
+            -avoid_negative_ts make_zero \
+            music_sanitised.mp3
+            mv music_sanitised.mp3 music.mp3
+            echo "music.mp3 re-encoded OK"
+          else
+            echo "No music.mp3 found — skipping"
+          fi
       - name: Run VI pipeline
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
