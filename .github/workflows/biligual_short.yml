@@ -285,11 +285,11 @@ jobs:
           MESSAGE+="🔗 [View run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           echo "message=$MESSAGE" >> $GITHUB_OUTPUT
 
-      - name: Send Telegram notification (optional)
-        if: ${{ secrets.NOTIFY_TELEGRAM_TOKEN != '' && secrets.NOTIFY_CHAT_ID != '' }}
-        run: |
-          curl -s -X POST \
-            "https://api.telegram.org/bot${{ secrets.NOTIFY_TELEGRAM_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.NOTIFY_CHAT_ID }}" \
-            -d parse_mode="Markdown" \
-            -d text="${{ steps.msg.outputs.message }}"
+      #- name: Send Telegram notification (optional)
+        #if: ${{ secrets.NOTIFY_TELEGRAM_TOKEN != '' && secrets.NOTIFY_CHAT_ID != '' }}
+        #run: |
+          #curl -s -X POST \
+            #"https://api.telegram.org/bot${{ secrets.NOTIFY_TELEGRAM_TOKEN }}/sendMessage" \
+            #-d chat_id="${{ secrets.NOTIFY_CHAT_ID }}" \
+            #-d parse_mode="Markdown" \
+            #-d text="${{ steps.msg.outputs.message }}"
