@@ -1732,7 +1732,7 @@ async def run_language_pipeline(
         for _, _, uid in posts:
             if uid not in published_ids:
                 published_ids.append(uid)
-        MAX_KEEP = 30
+        MAX_KEEP = 300
         if len(published_ids) > MAX_KEEP:
             published_ids = published_ids[-MAX_KEEP:]
         try:
