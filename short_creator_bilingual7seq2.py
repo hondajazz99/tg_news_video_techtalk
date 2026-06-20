@@ -206,10 +206,160 @@ def _captions_are_duplicate(a: str, b: str, threshold: float = None) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Configuration  — one instance per language pipeline
+# Emoji-aware text rendering
+#
+# DejaVuSans/FreeSans (the caption fonts) have no emoji glyphs, so plain
+# draw.text() silently drops emoji codepoints — they just don't show up in
+# the output video. Noto Color Emoji (already installed by the GitHub
+# Actions workflow for TTS-adjacent steps) provides real color glyphs, but
+# it's a fixed-size bitmap-strike font with ZERO Latin glyph coverage, so it
+# can't simply replace the caption font either.
+#
+# Fix: split caption text into runs of (plain-text) and (emoji), draw plain
+# runs with the normal caption font, and composite emoji as separately
+# rendered + rescaled glyph images pasted inline. This keeps all existing
+# layout/centering math working (callers get back the same total pixel
+# width they'd get from a single draw.text() call).
 # ---------------------------------------------------------------------------
-@dataclass
-class Config:
+EMOJI_FONT_PATH = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
+EMOJI_FONT_NATIVE_SIZE = 109  # the only valid embedded bitmap size for this font
+
+# Matches the ranges already used for TTS emoji-stripping, plus variation
+# selectors and ZWJ so multi-codepoint emoji sequences don't fragment into
+# stray empty glyphs.
+_EMOJI_RUN_RE = _re.compile(
+    r"[\U0001F300-\U0001FABF\U0001F600-\U0001F64F\U0001F680-\U0001F6FF"
+    r"\u2600-\u27BF\u2300-\u23FF\uFE0F\u200D]+"
+)
+
+
+def _split_text_emoji_runs(text: str) -> list:
+    """Split text into ordered (kind, value) runs: ('text', str) or ('emoji', str)."""
+    runs = []
+    last_end = 0
+    for m in _EMOJI_RUN_RE.finditer(text):
+        if m.start() > last_end:
+            runs.append(("text", text[last_end:m.start()]))
+        runs.append(("emoji", m.group()))
+        last_end = m.end()
+    if last_end < len(text):
+        runs.append(("text", text[last_end:]))
+    return runs
+
+
+def _contains_emoji(text: str) -> bool:
+    return bool(_EMOJI_RUN_RE.search(text))
+
+
+class _EmojiGlyphCache:
+    """Renders + caches individual emoji glyphs from Noto Color Emoji at
+    arbitrary target pixel heights (the font itself only has one native
+    bitmap size, so we render at native size once and resize per request)."""
+
+    _font = None
+    _glyph_cache: dict = {}  # (codepoints, target_px) -> RGBA Image or None
+
+    @classmethod
+    def _get_font(cls):
+        if cls._font is None:
+            if Path(EMOJI_FONT_PATH).exists():
+                try:
+                    cls._font = ImageFont.truetype(EMOJI_FONT_PATH, EMOJI_FONT_NATIVE_SIZE)
+                except Exception as e:
+                    logger.warning(f"Could not load emoji font: {e}")
+                    cls._font = False  # sentinel: tried and failed
+            else:
+                logger.warning(f"Emoji font not found at {EMOJI_FONT_PATH}; emoji will be skipped")
+                cls._font = False
+        return cls._font or None
+
+    @classmethod
+    def get(cls, emoji_run: str, target_px: int) -> Optional[Image.Image]:
+        key = (emoji_run, target_px)
+        if key in cls._glyph_cache:
+            return cls._glyph_cache[key]
+
+        font = cls._get_font()
+        if font is None:
+            cls._glyph_cache[key] = None
+            return None
+
+        try:
+            pad = 12
+            canvas_size = EMOJI_FONT_NATIVE_SIZE + pad * 2
+            img = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+            d = ImageDraw.Draw(img)
+            bb = d.textbbox((pad, pad), emoji_run, font=font, embedded_color=True)
+            if bb[2] <= bb[0] or bb[3] <= bb[1]:
+                cls._glyph_cache[key] = None
+                return None
+            d.text((pad, pad), emoji_run, font=font, embedded_color=True)
+            cropped = img.crop(bb)
+            scale = target_px / cropped.height
+            new_w = max(1, int(round(cropped.width * scale)))
+            new_h = max(1, target_px)
+            glyph = cropped.resize((new_w, new_h), Image.LANCZOS)
+        except Exception as e:
+            logger.warning(f"Emoji glyph render failed for {emoji_run!r}: {e}")
+            glyph = None
+
+        cls._glyph_cache[key] = glyph
+        return glyph
+
+
+def _measure_mixed_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
+                          emoji_px: Optional[int] = None) -> int:
+    """Total advance width of text, treating emoji runs as square-ish glyphs
+    sized to roughly match the font's line height."""
+    if emoji_px is None:
+        emoji_px = int(getattr(font, "size", 40))
+    total = 0
+    for kind, val in _split_text_emoji_runs(text):
+        if kind == "text":
+            if not val:
+                continue
+            bb = draw.textbbox((0, 0), val, font=font)
+            total += bb[2] - bb[0]
+        else:
+            glyph = _EmojiGlyphCache.get(val, emoji_px)
+            total += glyph.width if glyph is not None else 0
+    return total
+
+
+def _draw_mixed_text(draw: ImageDraw.ImageDraw, img: Image.Image, xy: tuple, text: str,
+                      font: ImageFont.FreeTypeFont, fill, emoji_px: Optional[int] = None) -> int:
+    """
+    Draws `text` at xy, rendering emoji runs as composited color glyphs
+    instead of (invisible) font glyphs. Plain-text runs use the normal
+    draw.text() call with the given font/fill, so existing stroke/shadow
+    callers can wrap this per-line. Returns total advance width in px so
+    callers doing manual centering keep working unchanged.
+    """
+    if emoji_px is None:
+        emoji_px = int(getattr(font, "size", 40))
+    x, y = xy
+    cursor_x = x
+    for kind, val in _split_text_emoji_runs(text):
+        if kind == "text":
+            if not val:
+                continue
+            draw.text((cursor_x, y), val, font=font, fill=fill)
+            bb = draw.textbbox((0, 0), val, font=font)
+            cursor_x += bb[2] - bb[0]
+        else:
+            glyph = _EmojiGlyphCache.get(val, emoji_px)
+            if glyph is not None:
+                # Vertically center the emoji glyph on the text baseline area
+                bb_ref = draw.textbbox((0, 0), "Hg", font=font)
+                line_h = bb_ref[3] - bb_ref[1]
+                gy = y + max(0, (line_h - glyph.height) // 2)
+                img.alpha_composite(glyph, (int(cursor_x), int(gy)))
+                cursor_x += glyph.width
+            # else: glyph unavailable, skip silently (degrades to stripped behavior)
+    return int(cursor_x - x)
+
+
+
     # Core
     TELEGRAM_TOKEN: str
     TELEGRAM_CHANNEL: str
@@ -748,8 +898,7 @@ class VideoCreator:
             widths = []
             for ci, word in enumerate(line_words):
                 f  = fnh if (gwi + ci) == active_idx else fn
-                bb = draw.textbbox((0, 0), word + " ", font=f)
-                widths.append(bb[2] - bb[0])
+                widths.append(_measure_mixed_width(draw, word + " ", f))
             x = (w - sum(widths)) // 2
             y = box_y + li * line_h + 14
             for ci, word in enumerate(line_words):
@@ -757,9 +906,9 @@ class VideoCreator:
                 f   = fnh if wi2 == active_idx else fn
                 col = (COLOR_HIGHLIGHT if wi2 == active_idx
                        else (COLOR_DONE if wi2 < active_idx else COLOR_NORMAL))
-                draw.text((x, y), word, font=f, fill=col)
-                bb = draw.textbbox((x, y), word + " ", font=f)
-                x += bb[2] - bb[0]
+                adv = _draw_mixed_text(draw, img, (x, y), word, f, col)
+                space_w = _measure_mixed_width(draw, " ", f) or int(f.size * 0.3)
+                x += adv + space_w
             gwi += len(line_words)
         return np.array(img)
 
@@ -799,15 +948,35 @@ class VideoCreator:
         y0 = int(h * 0.20)
         for li, line in enumerate(lines):
             ls = " ".join(line)
-            bb = draw.textbbox((0, 0), ls, font=f)
-            tw2 = bb[2] - bb[0]
+            tw2 = _measure_mixed_width(draw, ls, f)
             x   = (w - tw2) // 2
             y   = y0 + li * line_h
-            for ox in range(-4, 5):
-                for oy in range(-4, 5):
-                    if ox != 0 or oy != 0:
-                        draw.text((x + ox, y + oy), ls, font=f, fill=(0, 0, 0, min(alpha, 200)))
-            draw.text((x, y), ls, font=f, fill=(255, 255, 255, alpha))
+            cursor_x = x
+            for kind, val in _split_text_emoji_runs(ls):
+                if kind == "text":
+                    if not val:
+                        continue
+                    for ox in range(-4, 5):
+                        for oy in range(-4, 5):
+                            if ox != 0 or oy != 0:
+                                draw.text((cursor_x + ox, y + oy), val, font=f,
+                                          fill=(0, 0, 0, min(alpha, 200)))
+                    draw.text((cursor_x, y), val, font=f, fill=(255, 255, 255, alpha))
+                    bb = draw.textbbox((0, 0), val, font=f)
+                    cursor_x += bb[2] - bb[0]
+                else:
+                    glyph = _EmojiGlyphCache.get(val, int(f.size))
+                    if glyph is not None:
+                        bb_ref = draw.textbbox((0, 0), "Hg", font=f)
+                        line_h_ref = bb_ref[3] - bb_ref[1]
+                        gy = y + max(0, (line_h_ref - glyph.height) // 2)
+                        if alpha < 255 and glyph.mode == "RGBA":
+                            glyph = glyph.copy()
+                            r, g, b, a = glyph.split()
+                            a = a.point(lambda v: v * alpha // 255)
+                            glyph = Image.merge("RGBA", (r, g, b, a))
+                        img.alpha_composite(glyph, (int(cursor_x), int(gy)))
+                        cursor_x += glyph.width
         return np.array(img)
 
     def _make_pop_text_frame(self, t: float, text: str, font_size: int = 64,
@@ -828,7 +997,7 @@ class VideoCreator:
         total_h = line_h * len(lines)
         y0 = int(h * y_ratio) - total_h // 2
         if box:
-            max_lw = max(draw.textbbox((0, 0), " ".join(l), font=f)[2] for l in lines)
+            max_lw = max(_measure_mixed_width(draw, " ".join(l), f) for l in lines)
             bw = max_lw + 60
             bx = (w - bw) // 2
             draw.rounded_rectangle(
@@ -837,15 +1006,35 @@ class VideoCreator:
             )
         for li, line in enumerate(lines):
             ls = " ".join(line)
-            bb = draw.textbbox((0, 0), ls, font=f)
-            tw2 = bb[2] - bb[0]
+            tw2 = _measure_mixed_width(draw, ls, f)
             x = (w - tw2) // 2
             y = y0 + li * line_h
-            for ox in range(-3, 4):
-                for oy in range(-3, 4):
-                    if ox or oy:
-                        draw.text((x + ox, y + oy), ls, font=f, fill=(0, 0, 0, min(alpha, 200)))
-            draw.text((x, y), ls, font=f, fill=(color[0], color[1], color[2], alpha))
+            cursor_x = x
+            for kind, val in _split_text_emoji_runs(ls):
+                if kind == "text":
+                    if not val:
+                        continue
+                    for ox in range(-3, 4):
+                        for oy in range(-3, 4):
+                            if ox or oy:
+                                draw.text((cursor_x + ox, y + oy), val, font=f,
+                                          fill=(0, 0, 0, min(alpha, 200)))
+                    draw.text((cursor_x, y), val, font=f, fill=(color[0], color[1], color[2], alpha))
+                    bb = draw.textbbox((0, 0), val, font=f)
+                    cursor_x += bb[2] - bb[0]
+                else:
+                    glyph = _EmojiGlyphCache.get(val, int(f.size))
+                    if glyph is not None:
+                        bb_ref = draw.textbbox((0, 0), "Hg", font=f)
+                        line_h_ref = bb_ref[3] - bb_ref[1]
+                        gy = y + max(0, (line_h_ref - glyph.height) // 2)
+                        if alpha < 255 and glyph.mode == "RGBA":
+                            glyph = glyph.copy()
+                            r, g, b, a = glyph.split()
+                            a = a.point(lambda v: v * alpha // 255)
+                            glyph = Image.merge("RGBA", (r, g, b, a))
+                        img.alpha_composite(glyph, (int(cursor_x), int(gy)))
+                        cursor_x += glyph.width
         return np.array(img)
 
     def _make_pop_text_overlay(self, text: str, duration: float, **kwargs) -> "VideoClip":
@@ -870,8 +1059,7 @@ class VideoCreator:
                 continue
             fade = min(max((t - i * line_duration) / 0.2, 0.0), 1.0) if i == active_idx else 1.0
             ls = lines[i]
-            bb = draw.textbbox((0, 0), ls, font=f)
-            tw2 = bb[2] - bb[0]
+            tw2 = _measure_mixed_width(draw, ls, f)
             dx = wiggle_dx if i == active_idx else 0
             x = (w - tw2) // 2 + dx
             y = y0 + i * line_h
@@ -880,7 +1068,7 @@ class VideoCreator:
                 [x - 24, y - 12, x + tw2 + 24, y + 56],
                 radius=16, fill=(0, 0, 0, int(150 * fade))
             )
-            draw.text((x, y), ls, font=f, fill=(255, 221, 0, alpha))
+            _draw_mixed_text(draw, img, (x, y), ls, f, (255, 221, 0, alpha))
         return np.array(img)
 
     def _make_summary_lines_overlay(self, lines: List[str], duration: float) -> "VideoClip":
