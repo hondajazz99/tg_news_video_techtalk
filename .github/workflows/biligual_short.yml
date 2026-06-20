@@ -80,7 +80,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ffmpeg \
             fonts-dejavu-core \
-            fonts-freefont-ttf
+            fonts-freefont-ttf \
+            fonts-noto-color-emoji
           fc-cache -f
 
       - name: Install Python dependencies
@@ -268,6 +269,7 @@ jobs:
             ffmpeg \
             fonts-dejavu-core \
             fonts-freefont-ttf \
+            fonts-noto-color-emoji \
             fonts-noto
           fc-cache -f
 
