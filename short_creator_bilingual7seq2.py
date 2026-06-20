@@ -46,6 +46,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
@@ -164,6 +165,46 @@ def get_env_json(key: str, default: str = "[]") -> Union[list, dict]:
         return json.loads(default)
 
 
+def _normalize_caption(text: str) -> str:
+    """Lowercase, strip hashtags/urls/punctuation for similarity comparison."""
+    text = _re.sub(r'https?://\S+', '', text)
+    text = _re.sub(r'#\w+', '', text)
+    text = _re.sub(r'[^\w\s]', ' ', text, flags=_re.UNICODE)
+    text = _re.sub(r'\s+', ' ', text).strip().lower()
+    return text
+
+
+def _captions_are_duplicate(a: str, b: str, threshold: float = None) -> bool:
+    """
+    True if two captions look like the same underlying news story.
+    Combines sequence-ratio (catches reworded/paraphrased duplicates and
+    follow-up posts that repeat most of the original text) with a simple
+    word-overlap ratio (catches reordered/trimmed duplicates that
+    SequenceMatcher alone can under-score). Either signal tripping the
+    threshold counts as a duplicate.
+
+    Threshold default is 0.6 (moderately strict — favors letting two
+    distinct-but-related stories through over merging them). Tune via
+    DEDUPE_CAPTION_THRESHOLD env var. Lower = more aggressive deduping,
+    higher risk of false positives (different stories sharing a few words).
+    """
+    if threshold is None:
+        threshold = float(os.getenv("DEDUPE_CAPTION_THRESHOLD", "0.6"))
+    na, nb = _normalize_caption(a), _normalize_caption(b)
+    if not na or not nb:
+        return False
+
+    seq_ratio = SequenceMatcher(None, na, nb).ratio()
+
+    words_a, words_b = set(na.split()), set(nb.split())
+    if words_a and words_b:
+        overlap_ratio = len(words_a & words_b) / min(len(words_a), len(words_b))
+    else:
+        overlap_ratio = 0.0
+
+    return seq_ratio >= threshold or overlap_ratio >= threshold
+
+
 # ---------------------------------------------------------------------------
 # Configuration  — one instance per language pipeline
 # ---------------------------------------------------------------------------
@@ -267,10 +308,42 @@ CLIP_EXTS = (".mp4", ".mov", ".mkv", ".avi", ".webm")
 # Telegram client
 # ---------------------------------------------------------------------------
 class TelegramClient:
-    def __init__(self, token: str):
+    """
+    NOTE: Telegram's getUpdates is a consume-once queue. Without persisting
+    an offset/cache across runs, re-polling can either replay updates that
+    were already seen by a previous (e.g. concurrent or retried) run, or
+    drop updates that fell out of the buffer before being acted on — both
+    of which lead to duplicated or missing content downstream. We persist
+    a local photo cache file so each run only considers genuinely new
+    update_ids, and we advance the getUpdates offset so Telegram drops
+    acknowledged updates from its queue.
+    """
+
+    def __init__(self, token: str, cache_file: str = ".telegram_photo_cache.json"):
         self.token = token
         self.base_url = f"https://api.telegram.org/bot{token}/"
         self.session = requests.Session()
+        self.cache_path = Path(cache_file)
+        self._cache = self._load_cache()
+
+    def _load_cache(self) -> dict:
+        if self.cache_path.exists():
+            try:
+                return json.loads(self.cache_path.read_text())
+            except Exception as e:
+                logger.warning(f"Could not parse {self.cache_path}: {e} — starting fresh")
+        return {"last_update_id": 0, "seen_update_ids": []}
+
+    def _save_cache(self):
+        try:
+            # Keep seen_update_ids bounded so the cache file doesn't grow forever
+            seen = self._cache.get("seen_update_ids", [])
+            if len(seen) > 500:
+                seen = seen[-500:]
+            self._cache["seen_update_ids"] = seen
+            self.cache_path.write_text(json.dumps(self._cache))
+        except Exception as e:
+            logger.warning(f"Could not save {self.cache_path}: {e}")
 
     def get_latest_images(
         self,
@@ -280,40 +353,87 @@ class TelegramClient:
     ) -> List[Tuple[str, str, str]]:
         results: List[Tuple[str, str, str]] = []
         try:
-            url = f'{self.base_url}getUpdates?allowed_updates=["channel_post","message"]'
+            offset = self._cache.get("last_update_id", 0) + 1
+            seen_update_ids = set(self._cache.get("seen_update_ids", []))
+
+            url = (
+                f'{self.base_url}getUpdates'
+                f'?allowed_updates=["channel_post","message"]'
+                f'&offset={offset}'
+            )
             updates = self.session.get(url).json()
             logger.info(f"[{channel}] Updates received: {len(updates.get('result', []))}")
             if not updates["ok"]:
                 logger.error(f"Failed to get updates: {updates}")
                 return results
 
-            for update in reversed(updates.get("result", [])):
+            max_update_id = self._cache.get("last_update_id", 0)
+            all_updates = updates.get("result", [])
+
+            for update in reversed(all_updates):
+                update_id = update.get("update_id", 0)
+                max_update_id = max(max_update_id, update_id)
+
+                if update_id in seen_update_ids:
+                    continue  # already processed this update_id in a prior run
+
                 if len(results) >= max_posts:
-                    break
+                    continue  # still need to scan the rest to advance max_update_id
+
                 post = update.get("channel_post") or update.get("message", {})
                 chat_username = "@" + (
                     post.get("sender_chat", {}).get("username")
                     or post.get("chat", {}).get("username", "")
                 )
                 if chat_username == channel and "photo" in post:
-                    message_id = str(post.get("message_id", update.get("update_id", "")))
+                    message_id = str(post.get("message_id", update_id))
                     unique_key = f"{channel}:{message_id}"
                     if unique_key in published_ids:
+                        seen_update_ids.add(update_id)
                         continue
+
+                    caption = post.get("caption", "No caption")
+
+                    # Skip if this post's caption looks like the same
+                    # underlying story as one already picked for this batch
+                    # (e.g. a follow-up/correction posted shortly after the
+                    # original). Mark it as seen but NOT published, so it
+                    # remains eligible on a future run once it's no longer
+                    # competing with its near-duplicate.
+                    is_dupe = any(
+                        _captions_are_duplicate(caption, kept_caption)
+                        for _, kept_caption, _ in results
+                    )
+                    if is_dupe:
+                        logger.info(
+                            f"[{channel}] Skipping near-duplicate post {unique_key} "
+                            f"(caption too similar to one already in this batch)"
+                        )
+                        seen_update_ids.add(update_id)
+                        continue
+
                     try:
                         photo = max(post["photo"], key=lambda x: x["file_size"])
                         file_resp = self.session.get(
                             f"{self.base_url}getFile?file_id={photo['file_id']}"
                         ).json()
                         file_path = file_resp["result"]["file_path"]
-                        caption = post.get("caption", "No caption")
                         results.append((
                             f"https://api.telegram.org/file/bot{self.token}/{file_path}",
                             caption,
                             unique_key,
                         ))
+                        seen_update_ids.add(update_id)
                     except Exception as inner_e:
                         logger.error(f"Error resolving file for {unique_key}: {inner_e}")
+
+            # Persist offset + seen ids so the next run (even if this run's
+            # uploads later fail and published_ids isn't updated) never
+            # re-pulls the same Telegram updates.
+            self._cache["last_update_id"] = max_update_id
+            self._cache["seen_update_ids"] = list(seen_update_ids)
+            self._save_cache()
+
         except Exception as e:
             logger.error(f"Error fetching telegram content: {str(e)}")
         return results
@@ -1397,7 +1517,24 @@ async def _main():
         if run_vi and not yt_secrets_vi:
             raise ValueError("YOUTUBE_CLIENT_SECRETS_VI must be configured")
 
-        telegram        = TelegramClient(token)
+        # getUpdates returns nothing (silently) if a webhook is set on this
+        # bot token. Clear it defensively on every run before polling.
+        try:
+            requests.get(
+                f"https://api.telegram.org/bot{token}/deleteWebhook",
+                timeout=10,
+            )
+        except Exception as e:
+            logger.warning(f"deleteWebhook call failed (continuing anyway): {e}")
+
+        # Single shared client: getUpdates/offset is global to the bot token,
+        # so EN and VI must poll through the same client + cache file rather
+        # than each tracking their own offset (which would cause one
+        # language's poll to silently consume/hide the other's updates).
+        telegram = TelegramClient(
+            token,
+            cache_file=os.getenv("TELEGRAM_PHOTO_CACHE", ".telegram_photo_cache.json"),
+        )
         max_per_channel = int(os.getenv("MAX_TELEGRAM_POSTS", 3))
         shared          = _shared_overrides()
 
