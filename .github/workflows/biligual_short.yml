@@ -137,8 +137,8 @@ jobs:
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
           YOUTUBE_CLIENT_SECRETS_EN:  ${{ secrets.YOUTUBE_CLIENT_SECRETS_EN }}
-          TG_CHANNEL_EN:              "@xeonbitchannel"
-          TG_CHANNEL_NAME_EN:         "xeonbitchannel"
+          TG_CHANNEL_EN:              ${{ secrets.TG_CHANNEL_EN }} #"@xeonbitchannel"
+          TG_CHANNEL_NAME_EN:         ${{ secrets.TG_CHANNEL_NAME_EN }} #"xeonbitchannel"
           TTS_VOICE_EN:               ${{ vars.TTS_VOICE_EN || 'en-SG-LunaNeural' }}
           DESCRIPTION_EN:             ${{ vars.DESCRIPTION_EN || 'Latest crypto & tech news in English' }}
           TAGS_EN:                    ${{ vars.TAGS_EN || '["Shorts","Crypto","Bitcoin","Tech","News"]' }}
@@ -325,8 +325,8 @@ jobs:
         env:
           TELEGRAM_TOKEN:             ${{ secrets.TELEGRAM_TOKEN }}
           YOUTUBE_CLIENT_SECRETS_VI:  ${{ secrets.YOUTUBE_CLIENT_SECRETS_VI }}
-          TG_CHANNEL_VI:              "@TechTalk66"
-          TG_CHANNEL_NAME_VI:         "TechTalk66"
+          TG_CHANNEL_VI:              ${{ secrets.TG_CHANNEL_VI }} #"@TechTalk66"
+          TG_CHANNEL_NAME_VI:         ${{ secrets.TG_CHANNEL_NAME_EN }} #"TechTalk66"
           TTS_VOICE_VI:               ${{ vars.TTS_VOICE_VI || 'vi-VN-HoaiMyNeural' }}
           DESCRIPTION_VI:             ${{ vars.DESCRIPTION_VI || 'Tin tức công nghệ và crypto bằng tiếng Việt' }}
           TAGS_VI:                    ${{ vars.TAGS_VI || '["Shorts","CryptoViet","TinTuc","CongNghe"]' }}
