@@ -67,6 +67,13 @@ jobs:
             echo "No existing file — starting fresh"
             echo "[]" > .published_ids_en.json
           fi
+          if git show "origin/$DATA_BRANCH:.telegram_photo_cache_en.json" 2>/dev/null \
+              > .telegram_photo_cache_en.json; then
+            echo "Restored .telegram_photo_cache_en.json ($(wc -c < .telegram_photo_cache_en.json) bytes)"
+          else
+            echo "No existing cache — starting fresh"
+            echo '{"last_update_id": 0, "seen_update_ids": []}' > .telegram_photo_cache_en.json
+          fi
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -152,6 +159,7 @@ jobs:
           LOGO_PATH_EN:               "brand_logo.png"
           CLIPS_DIR_EN:               "clips"
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
+          TELEGRAM_PHOTO_CACHE:       ".telegram_photo_cache_en.json"
         run: python short_creator_bilingual7seq2.py --lang en
 
       - name: Save EN published IDs to data branch
@@ -160,11 +168,17 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # ── Stash the freshly-written file OUTSIDE the workspace ──────────
+          # ── Stash the freshly-written files OUTSIDE the workspace ──────────
           # Must do this BEFORE switching branches — git checkout would overwrite
           # $GITHUB_WORKSPACE, making cp source and dest the same file.
-          UPDATED_FILE="$(mktemp /tmp/published_ids_en_XXXX.json)"
-          cp "$GITHUB_WORKSPACE/.published_ids_en.json" "$UPDATED_FILE"
+          UPDATED_IDS="$(mktemp /tmp/published_ids_en_XXXX.json)"
+          cp "$GITHUB_WORKSPACE/.published_ids_en.json" "$UPDATED_IDS"
+          UPDATED_CACHE="$(mktemp /tmp/telegram_cache_en_XXXX.json)"
+          if [ -f "$GITHUB_WORKSPACE/.telegram_photo_cache_en.json" ]; then
+            cp "$GITHUB_WORKSPACE/.telegram_photo_cache_en.json" "$UPDATED_CACHE"
+          else
+            echo '{"last_update_id": 0, "seen_update_ids": []}' > "$UPDATED_CACHE"
+          fi
 
           # ── Retry loop: fetch → build commit → push (up to 5 attempts) ────
           # The VI job may push to the same branch concurrently. Each retry
@@ -191,22 +205,23 @@ jobs:
               git reset --hard
             fi
 
-            # Place the updated file (safe — $UPDATED_FILE is in /tmp)
-            cp "$UPDATED_FILE" .published_ids_en.json
+            # Place the updated files (safe — sources are in /tmp)
+            cp "$UPDATED_IDS" .published_ids_en.json
+            cp "$UPDATED_CACHE" .telegram_photo_cache_en.json
 
-            git add .published_ids_en.json
+            git add .published_ids_en.json .telegram_photo_cache_en.json
             if git diff --cached --quiet; then
-              echo "No changes to .published_ids_en.json — skipping push"
-              rm -f "$UPDATED_FILE"
+              echo "No changes to EN tracking files — skipping push"
+              rm -f "$UPDATED_IDS" "$UPDATED_CACHE"
               exit 0
             fi
 
-            git commit -m "chore: update EN published IDs [run ${{ github.run_id }}]"
+            git commit -m "chore: update EN published IDs + telegram cache [run ${{ github.run_id }}]"
 
             # Push — will succeed if no one else pushed since our fetch
             if git push origin "_tmp_data:$DATA_BRANCH"; then
-              echo "Pushed updated EN published IDs to $DATA_BRANCH"
-              rm -f "$UPDATED_FILE"
+              echo "Pushed updated EN tracking files to $DATA_BRANCH"
+              rm -f "$UPDATED_IDS" "$UPDATED_CACHE"
               exit 0
             fi
 
@@ -216,7 +231,7 @@ jobs:
           done
 
           echo "ERROR: Failed to push after $MAX_TRIES attempts."
-          rm -f "$UPDATED_FILE"
+          rm -f "$UPDATED_IDS" "$UPDATED_CACHE"
           exit 1
 
       - name: Upload EN video artifact (on failure, for debugging)
@@ -254,6 +269,13 @@ jobs:
           else
             echo "No existing file — starting fresh"
             echo "[]" > .published_ids_vi.json
+          fi
+          if git show "origin/$DATA_BRANCH:.telegram_photo_cache_vi.json" 2>/dev/null \
+              > .telegram_photo_cache_vi.json; then
+            echo "Restored .telegram_photo_cache_vi.json ($(wc -c < .telegram_photo_cache_vi.json) bytes)"
+          else
+            echo "No existing cache — starting fresh"
+            echo '{"last_update_id": 0, "seen_update_ids": []}' > .telegram_photo_cache_vi.json
           fi
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
@@ -340,6 +362,7 @@ jobs:
           LOGO_PATH_VI:               "brand_logo.png"
           CLIPS_DIR_VI:               "clips"
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
+          TELEGRAM_PHOTO_CACHE:       ".telegram_photo_cache_vi.json"
         run: python short_creator_bilingual7seq2.py --lang vi
 
       - name: Save VI published IDs to data branch
@@ -348,9 +371,15 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # ── Stash the freshly-written file OUTSIDE the workspace ──────────
-          UPDATED_FILE="$(mktemp /tmp/published_ids_vi_XXXX.json)"
-          cp "$GITHUB_WORKSPACE/.published_ids_vi.json" "$UPDATED_FILE"
+          # ── Stash the freshly-written files OUTSIDE the workspace ──────────
+          UPDATED_IDS="$(mktemp /tmp/published_ids_vi_XXXX.json)"
+          cp "$GITHUB_WORKSPACE/.published_ids_vi.json" "$UPDATED_IDS"
+          UPDATED_CACHE="$(mktemp /tmp/telegram_cache_vi_XXXX.json)"
+          if [ -f "$GITHUB_WORKSPACE/.telegram_photo_cache_vi.json" ]; then
+            cp "$GITHUB_WORKSPACE/.telegram_photo_cache_vi.json" "$UPDATED_CACHE"
+          else
+            echo '{"last_update_id": 0, "seen_update_ids": []}' > "$UPDATED_CACHE"
+          fi
 
           # ── Retry loop: fetch → build commit → push (up to 5 attempts) ────
           MAX_TRIES=5
@@ -373,20 +402,21 @@ jobs:
               git reset --hard
             fi
 
-            cp "$UPDATED_FILE" .published_ids_vi.json
+            cp "$UPDATED_IDS" .published_ids_vi.json
+            cp "$UPDATED_CACHE" .telegram_photo_cache_vi.json
 
-            git add .published_ids_vi.json
+            git add .published_ids_vi.json .telegram_photo_cache_vi.json
             if git diff --cached --quiet; then
-              echo "No changes to .published_ids_vi.json — skipping push"
-              rm -f "$UPDATED_FILE"
+              echo "No changes to VI tracking files — skipping push"
+              rm -f "$UPDATED_IDS" "$UPDATED_CACHE"
               exit 0
             fi
 
-            git commit -m "chore: update VI published IDs [run ${{ github.run_id }}]"
+            git commit -m "chore: update VI published IDs + telegram cache [run ${{ github.run_id }}]"
 
             if git push origin "_tmp_data:$DATA_BRANCH"; then
-              echo "Pushed updated VI published IDs to $DATA_BRANCH"
-              rm -f "$UPDATED_FILE"
+              echo "Pushed updated VI tracking files to $DATA_BRANCH"
+              rm -f "$UPDATED_IDS" "$UPDATED_CACHE"
               exit 0
             fi
 
@@ -396,7 +426,7 @@ jobs:
           done
 
           echo "ERROR: Failed to push after $MAX_TRIES attempts."
-          rm -f "$UPDATED_FILE"
+          rm -f "$UPDATED_IDS" "$UPDATED_CACHE"
           exit 1
 
       - name: Upload VI video artifact (on failure, for debugging)
