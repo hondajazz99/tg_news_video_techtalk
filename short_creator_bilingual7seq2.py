@@ -359,7 +359,11 @@ def _draw_mixed_text(draw: ImageDraw.ImageDraw, img: Image.Image, xy: tuple, tex
     return int(cursor_x - x)
 
 
-
+# ---------------------------------------------------------------------------
+# Configuration  — one instance per language pipeline
+# ---------------------------------------------------------------------------
+@dataclass
+class Config:
     # Core
     TELEGRAM_TOKEN: str
     TELEGRAM_CHANNEL: str
