@@ -454,7 +454,7 @@ class Config:
     LOGO_WIDTH_RATIO: float = 0.20
     LOGO_MARGIN_PX: int = 28
     LOGO_OPACITY: float = 0.92
-    TG_CHANNEL_NAME: str = "xeonbitchannel"
+    TG_CHANNEL_NAME: str = ""
     PUBLISHED_IDS_FILE: str = ".published_ids.json"
 
     # Timeline — 7-segment layout (Hook / Img1 / Dance / Img2 / Img3 / Summary / CTA)
@@ -499,7 +499,7 @@ class Config:
     CC_FONT_SIZE: int = 62
     CC_BOX_ALPHA: int = 210
     CC_Y_RATIO: float = 0.78
-    CC_MAX_LINE_WORDS: int = 2
+    CC_MAX_LINE_WORDS: int = 5
 
     # Jump-cut
     JUMPCUT_SEGMENTS_A: int = 3
