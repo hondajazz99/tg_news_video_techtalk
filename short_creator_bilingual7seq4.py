@@ -509,6 +509,13 @@ class Config:
     BEAT_ZOOM_MAX: float = 0.07
     KEN_BURNS_ZOOM: float = 1.18
 
+    # Aspect-ratio fallback — pillarbox/letterbox for non-9:16 photos
+    TARGET_ASPECT: float = field(default_factory=lambda: 1080 / 1920)  # w/h
+    ASPECT_TOLERANCE: float = 0.06   # ratio within ±6% of target still treated as "fits"
+    PILLARBOX_BG_BLUR_RADIUS: int = 35
+    PILLARBOX_BG_ZOOM: float = 1.05  # bg starts at 1.05x and eases to 1.0x
+    PILLARBOX_FG_FADE_SEC: float = 0.4
+
     # Labels
     INTRO_LABEL: str = "BREAKING"
     OUTRO_CTA: str = "Follow the channel for latest news"
@@ -723,6 +730,25 @@ class VideoCreator:
         x, y = (nw - tw) // 2, (nh - th) // 2
         return img.crop((x, y, x + tw, y + th))
 
+    def _fit_contain(self, img: Image.Image, tw: int, th: int) -> Image.Image:
+        """Resize the whole image to fit inside (tw, th) without cropping —
+        returned image is <= target size on both axes, centered by caller."""
+        ow, oh = img.size
+        scale = min(tw / ow, th / oh)
+        nw, nh = max(1, int(ow * scale)), max(1, int(oh * scale))
+        return img.resize((nw, nh), Image.LANCZOS)
+
+    def _is_offaspect(self, img: Image.Image) -> bool:
+        """True if the image's aspect ratio deviates from the 9:16 target
+        beyond ASPECT_TOLERANCE — i.e. it needs pillarbox/letterbox framing
+        instead of a full-bleed cover-crop (which would chop off content)."""
+        ow, oh = img.size
+        if oh == 0:
+            return False
+        ratio = ow / oh
+        target = self.config.TARGET_ASPECT
+        return abs(ratio - target) / target > self.config.ASPECT_TOLERANCE
+
     def _resize_clip_to_shorts(self, clip):
         tw, th = self.config.OUTPUT_RESOLUTION
         sw, sh = clip.w, clip.h
@@ -732,8 +758,60 @@ class VideoCreator:
         x1, y1 = (nw - tw) // 2, (nh - th) // 2
         return _c_crop(c, x1, y1, x1 + tw, y1 + th)
 
+    def _pillarbox_clip(self, pil_img: Image.Image, duration: float,
+                        zoom_in: bool = True) -> "VideoClip":
+        """For images that aren't 9:16: show the FULL photo (no crop) on a
+        blurred, softly-animated version of itself filling the frame behind
+        it, instead of a static black bar. Background does a gentle zoom
+        (1.05x -> 1.0x or reverse) and the foreground fades in, so off-aspect
+        photos don't feel static/boring next to the full-bleed Ken Burns shots."""
+        cfg = self.config
+        w, h = cfg.OUTPUT_RESOLUTION
+        rgb = pil_img.convert("RGB")
+
+        # Background: cover-crop to fill frame, then blur. Pre-render once at
+        # a slightly larger size so the zoom animation has room to sample from.
+        bg_max_zoom = cfg.PILLARBOX_BG_ZOOM
+        big_w, big_h = int(w * bg_max_zoom), int(h * bg_max_zoom)
+        bg_big = self._cover_crop(rgb, big_w, big_h)
+        bg_big = bg_big.filter(ImageFilter.GaussianBlur(cfg.PILLARBOX_BG_BLUR_RADIUS))
+        bg_big_arr = np.array(bg_big)
+
+        # Foreground: fit the whole image inside the frame, no cropping.
+        fg_img = self._fit_contain(rgb, w, h)
+        fg_w, fg_h = fg_img.size
+        fg_x, fg_y = (w - fg_w) // 2, (h - fg_h) // 2
+        fg_arr = np.array(fg_img)
+
+        fade_sec = min(cfg.PILLARBOX_FG_FADE_SEC, duration * 0.3)
+
+        def make_frame(t):
+            # Background: slow ease between 1.05x and 1.0x over the segment
+            progress = min(max(t / duration, 0.0), 1.0)
+            if not zoom_in:
+                progress = 1.0 - progress
+            win_w = max(int(big_w - (big_w - w) * progress), w)
+            win_h = max(int(big_h - (big_h - h) * progress), h)
+            x0 = (big_w - win_w) // 2
+            y0 = (big_h - win_h) // 2
+            region = bg_big_arr[y0:y0 + win_h, x0:x0 + win_w]
+            bg_frame = np.array(Image.fromarray(region).resize((w, h), Image.BILINEAR))
+
+            # Foreground: fade in over fade_sec, then hold steady (no crop drift)
+            alpha = min(t / fade_sec, 1.0) if fade_sec > 0 else 1.0
+            canvas = bg_frame.copy()
+            fg_region = canvas[fg_y:fg_y + fg_h, fg_x:fg_x + fg_w]
+            blended = (fg_arr.astype(np.float32) * alpha +
+                       fg_region.astype(np.float32) * (1 - alpha)).astype(np.uint8)
+            canvas[fg_y:fg_y + fg_h, fg_x:fg_x + fg_w] = blended
+            return canvas
+
+        return _make_video_clip(make_frame, duration)
+
     def _ken_burns_clip(self, pil_img: Image.Image, duration: float,
                         zoom_in: bool = True, max_zoom: float = None) -> "VideoClip":
+        if self._is_offaspect(pil_img):
+            return self._pillarbox_clip(pil_img, duration, zoom_in=zoom_in)
         if max_zoom is None:
             max_zoom = self.config.KEN_BURNS_ZOOM
         w, h = self.config.OUTPUT_RESOLUTION
