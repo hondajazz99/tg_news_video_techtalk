@@ -1702,13 +1702,13 @@ async def run_language_pipeline(
     # Build Config
     cfg = Config(
         TELEGRAM_TOKEN=os.getenv("TELEGRAM_TOKEN"),
-        TELEGRAM_CHANNEL=tg_channel,
         YOUTUBE_CLIENT_SECRETS=yt_secrets,
         TG_CHANNEL_NAME=tg_channel_name,
         TTS_VOICE=tts_voice,
         LANG=lang,
         PUBLISHED_IDS_FILE=published_ids_file,
         **config_overrides,
+        TELEGRAM_CHANNEL=tg_channel,
     )
 
     # Create video
