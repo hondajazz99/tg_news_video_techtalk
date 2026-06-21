@@ -1,6 +1,6 @@
 # short_creator_bilingual7seq4.py
 #
-# Bilingual upgrade of short_creator_4_.py
+# Bilingual upgrade of short_creator_2_.py
 #
 # ARCHITECTURE:
 #   1. Fetch posts from @xeonbitchannel (English)  → build EN video  → upload to YouTube EN channel
@@ -1432,15 +1432,31 @@ class VideoCreator:
             return line + ("…" if len(words_) > n_words else "")
 
         # 2. TTS script — full narration still comes from all captions + CTA
+        cap1_wc = len(cap1.split())
+        cap2_wc = len(cap2.split())
+        cap3_wc = len(cap3.split())
+        cta1_wc = len(cfg.OUTRO_CTA.split())
+
         script = " ".join(c.strip() for c in [cap1, cap2, cap3] if c.strip())
         script = _re.sub(r'\s+', ' ', script).strip()
         if not script:
             script = ("Breaking news. Stay tuned." if cfg.LANG == "en"
                       else "Tin tức mới. Hãy theo dõi.")
+            # Fallback script has no relation to cap1/2/3 word counts — reset
+            # the split counters so the duration-derivation below degrades
+            # gracefully to an even split instead of misreading word indices.
+            cap1_wc = cap2_wc = cap3_wc = 0
         script = f"{script} {cfg.OUTRO_CTA}"
 
+        # Non-narration segments have fixed screen time; the rest of the 59s
+        # budget is what's actually available for the spoken cap1/2/3 + CTA1
+        # portion of the script. TTS is timed to this budget (not the full
+        # TOTAL) so that image segments can be re-cut to match real speech.
+        FIXED_DUR = cfg.DUR_HOOK + cfg.DUR_DANCE + cfg.DUR_SUMMARY
+        speech_budget = max(TOTAL - FIXED_DUR, 5.0)
+
         logger.info(f"[{lang_tag}] Script ({len(script.split())} words): {script[:120]}...")
-        _, word_timings = await self._generate_continuous_tts(script, TOTAL, tmp_tts)
+        _, word_timings = await self._generate_continuous_tts(script, speech_budget, tmp_tts)
         all_words = [wt["word"] for wt in word_timings]
 
         # 3. Amplitude (kept for potential future beat-sync use)
@@ -1452,16 +1468,60 @@ class VideoCreator:
             except Exception as e:
                 logger.warning(f"[{lang_tag}] Amplitude failed: {e}")
 
-        # 4. Timeline offsets — 7-segment layout per the bố cục:
-        #    Hook(0-3) / Img1(3-16) / Dance(16-20) / Img2(20-33) / Img3(33-46) /
-        #    Summary(46-52) / CTA(52-59)
+        # 4. Timeline offsets — Hook/Dance/Summary stay fixed; Img1/Img2/Img3
+        #    are re-cut to match exactly when the TTS finishes speaking each
+        #    caption, so the on-screen photo always matches the narration.
+        #    Falls back to the old fixed split if word_timings is empty.
+        MIN_IMG_DUR = 4.0  # floor so a very short/empty caption still shows briefly
+
+        def _segment_end_time(word_count_cutoff: int) -> Optional[float]:
+            """Time (sec, in TTS audio) when the word at this cutoff index ends."""
+            if word_count_cutoff <= 0 or word_count_cutoff > len(word_timings):
+                return None
+            return word_timings[word_count_cutoff - 1]["end"]
+
+        if word_timings and (cap1_wc + cap2_wc + cap3_wc) > 0:
+            end1 = _segment_end_time(cap1_wc)
+            end2 = _segment_end_time(cap1_wc + cap2_wc)
+            end3 = _segment_end_time(cap1_wc + cap2_wc + cap3_wc)
+
+            dur_img1 = max((end1 if end1 is not None else speech_budget / 3), MIN_IMG_DUR)
+            dur_img2 = max((end2 - end1) if (end1 is not None and end2 is not None)
+                            else speech_budget / 3, MIN_IMG_DUR)
+            dur_img3 = max((end3 - end2) if (end2 is not None and end3 is not None)
+                            else speech_budget / 3, MIN_IMG_DUR)
+        else:
+            dur_img1, dur_img2, dur_img3 = cfg.DUR_IMG1, cfg.DUR_IMG2, cfg.DUR_IMG3
+
+        # Safety: the MIN_IMG_DUR floor (or unusually long captions) could in
+        # theory push Hook+Img1+Dance+Img2+Img3+Summary past what's left for
+        # a minimum-viable CTA. If so, scale the three image durations down
+        # proportionally so the full timeline always fits within TOTAL.
+        CTA_FLOOR = 3.0
+        non_img_fixed = cfg.DUR_HOOK + cfg.DUR_DANCE + cfg.DUR_SUMMARY
+        max_img_budget = max(TOTAL - non_img_fixed - CTA_FLOOR, MIN_IMG_DUR * 3)
+        img_total = dur_img1 + dur_img2 + dur_img3
+        if img_total > max_img_budget:
+            scale = max_img_budget / img_total
+            dur_img1 *= scale
+            dur_img2 *= scale
+            dur_img3 *= scale
+
         t_hook    = 0.0
         t_img1    = t_hook    + cfg.DUR_HOOK
-        t_dance   = t_img1    + cfg.DUR_IMG1
+        t_dance   = t_img1    + dur_img1
         t_img2    = t_dance   + cfg.DUR_DANCE
-        t_img3    = t_img2    + cfg.DUR_IMG2
-        t_summary = t_img3    + cfg.DUR_IMG3
+        t_img3    = t_img2    + dur_img2
+        t_summary = t_img3    + dur_img3
         t_cta     = t_summary + cfg.DUR_SUMMARY
+
+        # Remaining budget for CTA so the whole video never exceeds 59s.
+        dur_cta = max(min(cfg.DUR_CTA, TOTAL - t_cta), CTA_FLOOR)
+
+        logger.info(
+            f"[{lang_tag}] Dynamic timeline: Img1={dur_img1:.1f}s Img2={dur_img2:.1f}s "
+            f"Img3={dur_img3:.1f}s CTA={dur_cta:.1f}s → total≈{t_cta + dur_cta:.1f}s"
+        )
 
         # 5. Clips
         clip_files = self._list_clips()
@@ -1506,7 +1566,7 @@ class VideoCreator:
         # Only the 2nd CTA line needs voicing — the 1st (OUTRO_CTA) is already
         # spoken as the tail of the main script.
         cta_extra_text = cta_lines[1] if len(cta_lines) > 1 else ""
-        cta_extra_dur  = max(cfg.DUR_CTA - 2.0, cfg.DUR_CTA * 0.6)  # mirrors cta_dur in _build_cta
+        cta_extra_dur  = max(dur_cta - 2.0, dur_cta * 0.6)  # mirrors cta_dur in _build_cta
         cta_tts_path = await _voice_extra(cta_extra_text, cta_extra_dur, "cta")
         if cta_tts_path:
             extra_audio_clips.append((t_cta, cta_tts_path))
@@ -1516,36 +1576,36 @@ class VideoCreator:
         seg_hook = self._build_hook(
             img1, all_words, word_timings, t_hook, cfg.DUR_HOOK, fps, hook_text)
 
-        logger.info(f"[{lang_tag}] [3-16s]  IMG1 (wiggle x2)...")
+        logger.info(f"[{lang_tag}] [{t_img1:.1f}-{t_dance:.1f}s] IMG1 (wiggle x2)...")
         seg_img1 = self._build_image_wiggle(
-            img1, all_words, word_timings, t_img1, cfg.DUR_IMG1, fps,
+            img1, all_words, word_timings, t_img1, dur_img1, fps,
             caption_text=_short_line(cap1) or None,
             wiggle_times=(3.0, 7.0), zoom_in=True)
 
-        logger.info(f"[{lang_tag}] [16-20s] DANCE reaction...")
+        logger.info(f"[{lang_tag}] [{t_dance:.1f}-{t_img2:.1f}s] DANCE reaction...")
         seg_dance = self._build_dance_reaction(
             clip_files, all_words, word_timings, t_dance, cfg.DUR_DANCE, fps, dance_text)
 
-        logger.info(f"[{lang_tag}] [20-33s] IMG2 (wiggle x2 + keyword)...")
+        logger.info(f"[{lang_tag}] [{t_img2:.1f}-{t_img3:.1f}s] IMG2 (wiggle x2 + keyword)...")
         seg_img2 = self._build_image_wiggle(
-            img2, all_words, word_timings, t_img2, cfg.DUR_IMG2, fps,
+            img2, all_words, word_timings, t_img2, dur_img2, fps,
             caption_text=_short_line(cap2) or None,
             wiggle_times=(4.5, 8.5), zoom_in=True)
 
-        logger.info(f"[{lang_tag}] [33-46s] IMG3 (wiggle)...")
+        logger.info(f"[{lang_tag}] [{t_img3:.1f}-{t_summary:.1f}s] IMG3 (wiggle)...")
         seg_img3 = self._build_image_wiggle(
-            img3, all_words, word_timings, t_img3, cfg.DUR_IMG3, fps,
+            img3, all_words, word_timings, t_img3, dur_img3, fps,
             caption_text=_short_line(cap3) or None,
             wiggle_times=(3.5, 7.0), zoom_in=False)
 
-        logger.info(f"[{lang_tag}] [46-52s] SUMMARY (3 lines)...")
+        logger.info(f"[{lang_tag}] [{t_summary:.1f}-{t_cta:.1f}s] SUMMARY (3 lines)...")
         seg_summary = self._build_summary(
             img2, all_words, word_timings, t_summary, cfg.DUR_SUMMARY, fps, summary_lines)
 
-        logger.info(f"[{lang_tag}] [52-59s] CTA + dance cut...")
+        logger.info(f"[{lang_tag}] [{t_cta:.1f}-{(t_cta+dur_cta):.1f}s] CTA + dance cut...")
         seg_cta = self._build_cta(
             img1, cfg.TG_CHANNEL_NAME, clip_files, all_words, word_timings,
-            t_cta, cfg.DUR_CTA, fps, cta_lines)
+            t_cta, dur_cta, fps, cta_lines)
 
         # 8. Concatenate
         segments = [seg_hook, seg_img1, seg_dance, seg_img2, seg_img3, seg_summary, seg_cta]
