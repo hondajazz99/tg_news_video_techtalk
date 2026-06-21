@@ -2,3 +2,5 @@
 .published_ids.json
 .published-ids-en.json
 .published-ids-vi.json
+.telegram_photo_cache_en.json
+.telegram_photo_cache_vi.json
