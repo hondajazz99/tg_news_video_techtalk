@@ -160,7 +160,7 @@ jobs:
           CLIPS_DIR_EN:               "clips"
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
           TELEGRAM_PHOTO_CACHE:       ".telegram_photo_cache_en.json"
-        run: python short_creator_bilingual7seq4.py --lang en
+        run: python short_creator_bilingual7seq5.py --lang en
 
       - name: Save EN published IDs to data branch
         if: always()
@@ -363,7 +363,7 @@ jobs:
           CLIPS_DIR_VI:               "clips"
           MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
           TELEGRAM_PHOTO_CACHE:       ".telegram_photo_cache_vi.json"
-        run: python short_creator_bilingual7seq4.py --lang vi
+        run: python short_creator_bilingual7seq5.py --lang vi
 
       - name: Save VI published IDs to data branch
         if: always()
