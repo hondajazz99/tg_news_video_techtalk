@@ -495,6 +495,7 @@ class Config:
     LOGO_MARGIN_PX: int = 28
     LOGO_OPACITY: float = 0.92
     TG_CHANNEL_NAME: str = "xeonbitchannel"
+    TG_NOTIFY_CHANNEL: str = ""        # channel to post YT notification (e.g. "@xeonbitchannel")
     PUBLISHED_IDS_FILE: str = ".published_ids.json"
 
     # Timeline — 7-segment layout (Hook / Img1 / Dance / Img2 / Img3 / Summary / CTA)
@@ -539,7 +540,7 @@ class Config:
     CC_FONT_SIZE: int = 62
     CC_BOX_ALPHA: int = 210
     CC_Y_RATIO: float = 0.78
-    CC_MAX_LINE_WORDS: int = 4
+    CC_MAX_LINE_WORDS: int = 2
 
     # Jump-cut
     JUMPCUT_SEGMENTS_A: int = 3
@@ -700,6 +701,78 @@ class TelegramClient:
         except Exception as e:
             logger.error(f"Error fetching telegram content: {str(e)}")
         return results
+
+    def send_youtube_notification(
+        self,
+        notify_channel: str,
+        video_id: str,
+        publish_at: str,
+        captions: list,
+        lang: str,
+    ) -> bool:
+        """Post a YouTube upload notification to the given Telegram channel.
+
+        ``notify_channel`` — Telegram channel id or @username to post to.
+        ``video_id``       — YouTube video id (no prefix).
+        ``publish_at``     — ISO 8601 UTC publish time string from the YT API.
+        ``captions``       — list of caption strings used in the video.
+        ``lang``           — "en" or "vi", controls message language.
+        Returns True if the message was sent successfully.
+        """
+        if not notify_channel:
+            return False
+
+        yt_url = f"https://youtu.be/{video_id}"
+
+        # Parse publish_at → human-readable local UTC string
+        try:
+            dt = datetime.strptime(publish_at, "%Y-%m-%dT%H:%M:%S.000Z")
+            dt_str = dt.strftime("%d/%m/%Y %H:%M UTC")
+        except Exception:
+            dt_str = publish_at
+
+        # Build caption preview (first 2 lines, trimmed)
+        preview_lines = [c.strip() for c in (captions or []) if c and c.strip()][:2]
+        preview = "\n".join(f"• {l}" for l in preview_lines)
+
+        if lang == "vi":
+            text = (
+                f"🎬 <b>Video mới vừa được lên lịch!</b>\n\n"
+                f"{preview}\n\n"
+                f"📅 Đăng lúc: <b>{dt_str}</b>\n"
+                f"▶️ {yt_url}"
+            )
+        else:
+            text = (
+                f"🎬 <b>New Short scheduled!</b>\n\n"
+                f"{preview}\n\n"
+                f"📅 Goes live: <b>{dt_str}</b>\n"
+                f"▶️ {yt_url}"
+            )
+
+        try:
+            resp = requests.post(
+                f"{self.base_url}sendMessage",
+                json={
+                    "chat_id":    notify_channel,
+                    "text":       text,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": False,
+                },
+                timeout=15,
+            )
+            data = resp.json()
+            if data.get("ok"):
+                logger.info(f"[{lang.upper()}] Telegram noti sent → {notify_channel}: {yt_url}")
+                return True
+            else:
+                logger.warning(
+                    f"[{lang.upper()}] Telegram sendMessage failed: {data.get('description')}"
+                )
+                return False
+        except Exception as e:
+            logger.warning(f"[{lang.upper()}] Telegram notification error: {e}")
+            return False
 
 
 # ---------------------------------------------------------------------------
@@ -1867,7 +1940,7 @@ class YouTubeUploader:
                 except Exception as pe:
                     logger.error(f"Playlist insert failed: {pe}")
 
-            return response
+            return video_id, publish_at
 
         except Exception as e:
             err_str = str(e)
@@ -1875,7 +1948,7 @@ class YouTubeUploader:
                 logger.error(f"[{config.LANG.upper()}] YouTube daily quota exceeded.")
                 raise SystemExit(1)
             logger.error(f"[{config.LANG.upper()}] Upload failed: {err_str}")
-            return None
+            return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -1885,6 +1958,7 @@ async def run_language_pipeline(
     lang: str,
     tg_channel: str,
     tg_channel_name: str,
+    tg_notify_channel: str,
     tts_voice: str,
     yt_secrets: dict,
     published_ids_file: str,
@@ -1892,7 +1966,7 @@ async def run_language_pipeline(
     telegram: TelegramClient,
     max_per_channel: int,
 ) -> bool:
-    """Full fetch → create → upload pipeline for one language. Returns True on success."""
+    """Full fetch → create → upload → notify pipeline for one language. Returns True on success."""
     lang_tag = lang.upper()
     logger.info(f"\n{'='*60}\n[{lang_tag}] Pipeline start — {tg_channel}\n{'='*60}")
 
@@ -1918,6 +1992,7 @@ async def run_language_pipeline(
         TELEGRAM_TOKEN=os.getenv("TELEGRAM_TOKEN"),
         YOUTUBE_CLIENT_SECRETS=yt_secrets,
         TG_CHANNEL_NAME=tg_channel_name,
+        TG_NOTIFY_CHANNEL=tg_notify_channel,
         TTS_VOICE=tts_voice,
         LANG=lang,
         PUBLISHED_IDS_FILE=published_ids_file,
@@ -1935,14 +2010,14 @@ async def run_language_pipeline(
 
     # Upload
     uploader = YouTubeUploader(yt_secrets)
-    result   = uploader.upload_short(
+    video_id, publish_at = uploader.upload_short(
         video_path, cfg,
         caption=posts[0][1] if posts else "",
         all_captions=all_captions,
     )
 
     # Save published IDs
-    if result:
+    if video_id:
         for _, _, uid in posts:
             if uid not in published_ids:
                 published_ids.append(uid)
@@ -1954,6 +2029,18 @@ async def run_language_pipeline(
             logger.info(f"[{lang_tag}] Saved {len(posts)} new published ID(s).")
         except Exception as e:
             logger.warning(f"[{lang_tag}] Could not save published IDs: {e}")
+
+        # Telegram notification — post to the notify channel for this language
+        if tg_notify_channel:
+            telegram.send_youtube_notification(
+                notify_channel=tg_notify_channel,
+                video_id=video_id,
+                publish_at=publish_at,
+                captions=all_captions,
+                lang=lang,
+            )
+        else:
+            logger.info(f"[{lang_tag}] No TG_NOTIFY_CHANNEL set — skipping Telegram noti.")
     else:
         logger.warning(f"[{lang_tag}] Upload failed — IDs NOT saved.")
 
@@ -1961,7 +2048,7 @@ async def run_language_pipeline(
         video_path.unlink()
         logger.info(f"[{lang_tag}] Cleaned up {video_path}.")
 
-    return bool(result)
+    return bool(video_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2068,6 +2155,8 @@ async def _main():
                 lang="en",
                 tg_channel=os.getenv("TG_CHANNEL_EN", "@xeonbitchannel"),
                 tg_channel_name=os.getenv("TG_CHANNEL_NAME_EN", "xeonbitchannel"),
+                tg_notify_channel=os.getenv("TG_NOTIFY_CHANNEL_EN",
+                                            os.getenv("TG_CHANNEL_EN", "@xeonbitchannel")),
                 tts_voice=os.getenv("TTS_VOICE_EN", "en-SG-LunaNeural"),
                 yt_secrets=yt_secrets_en,
                 published_ids_file=os.getenv("PUBLISHED_IDS_FILE_EN", ".published_ids_en.json"),
@@ -2102,6 +2191,8 @@ async def _main():
                 lang="vi",
                 tg_channel=os.getenv("TG_CHANNEL_VI", "@TechTalk66"),
                 tg_channel_name=os.getenv("TG_CHANNEL_NAME_VI", "TechTalk66"),
+                tg_notify_channel=os.getenv("TG_NOTIFY_CHANNEL_VI",
+                                            os.getenv("TG_CHANNEL_VI", "@TechTalk66")),
                 tts_voice=os.getenv("TTS_VOICE_VI", "vi-VN-HoaiMyNeural"),
                 yt_secrets=yt_secrets_vi,
                 published_ids_file=os.getenv("PUBLISHED_IDS_FILE_VI", ".published_ids_vi.json"),
