@@ -539,7 +539,7 @@ class Config:
     CC_FONT_SIZE: int = 62
     CC_BOX_ALPHA: int = 210
     CC_Y_RATIO: float = 0.78
-    CC_MAX_LINE_WORDS: int = 3
+    CC_MAX_LINE_WORDS: int = 4
 
     # Jump-cut
     JUMPCUT_SEGMENTS_A: int = 3
