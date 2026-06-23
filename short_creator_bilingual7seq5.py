@@ -1,4 +1,4 @@
-# short_creator_bilingual7seq5.py
+# short_creator_bilingual7seq2.py
 #
 # Bilingual upgrade of short_creator_2_.py
 #
@@ -109,6 +109,14 @@ def _c_subclip(clip, t1, t2):
     return clip.subclipped(t1, t2) if MOVIEPY_V2 else clip.subclip(t1, t2)
 def _c_start(clip, t):
     return clip.with_start(t)      if MOVIEPY_V2 else clip.set_start(t)
+def _c_audio_fadein(clip, d):
+    return clip.audio_fadein(d)    if MOVIEPY_V2 else clip.audio_fadein(d)
+def _c_audio_fadeout(clip, d):
+    return clip.audio_fadeout(d)   if MOVIEPY_V2 else clip.audio_fadeout(d)
+def _c_fadein(clip, d):
+    return clip.fadein(d)          if MOVIEPY_V2 else clip.fadein(d)
+def _c_fadeout(clip, d):
+    return clip.fadeout(d)         if MOVIEPY_V2 else clip.fadeout(d)
 def _c_transform(clip, func):
     return clip.transform(func)    if MOVIEPY_V2 else clip.fl(func)
 def _c_resize(clip, size):
@@ -540,7 +548,7 @@ class Config:
     CC_FONT_SIZE: int = 62
     CC_BOX_ALPHA: int = 210
     CC_Y_RATIO: float = 0.78
-    CC_MAX_LINE_WORDS: int = 4
+    CC_MAX_LINE_WORDS: int = 2
 
     # Jump-cut
     JUMPCUT_SEGMENTS_A: int = 3
@@ -556,6 +564,9 @@ class Config:
     PILLARBOX_BG_BLUR_RADIUS: int = 35
     PILLARBOX_BG_ZOOM: float = 1.05  # bg starts at 1.05x and eases to 1.0x
     PILLARBOX_FG_FADE_SEC: float = 0.4
+
+    AUDIO_FADE_SEC: float = 1.5   # bg music fade-in at start, fade-out at end
+    VIDEO_FADE_SEC: float = 0.5   # output video fade-in / fade-out (black)
 
     # Labels
     INTRO_LABEL: str = "BREAKING"
@@ -727,7 +738,8 @@ class TelegramClient:
         # Parse publish_at → human-readable local UTC string
         try:
             dt = datetime.strptime(publish_at, "%Y-%m-%dT%H:%M:%S.000Z")
-            dt_str = dt.strftime("%d/%m/%Y %H:%M UTC")
+            dt_ict = dt + timedelta(hours=7)
+            dt_str = dt_ict.strftime("%d/%m/%Y %H:%M ICT")
         except Exception:
             dt_str = publish_at
 
@@ -1820,8 +1832,12 @@ class VideoCreator:
             bg = AudioFileClip(str(music_path))
             bg = _c_audio_loop(bg, total_dur)
             bg = _c_vol(bg, cfg.BG_MUSIC_VOL)
+            bg = _c_audio_fadein(bg, cfg.AUDIO_FADE_SEC)
+            bg = _c_audio_fadeout(bg, cfg.AUDIO_FADE_SEC)
             audio_tracks.insert(0, bg)
         final = _c_audio(final, CompositeAudioClip(audio_tracks))
+        final = _c_fadein(final, cfg.VIDEO_FADE_SEC)
+        final = _c_fadeout(final, cfg.VIDEO_FADE_SEC)
 
         # 10. Write
         output_path = Path(f"output_short_{cfg.LANG}.mp4")
