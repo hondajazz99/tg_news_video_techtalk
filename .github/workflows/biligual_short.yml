@@ -2,7 +2,7 @@ name: Bilingual YouTube Shorts Creator
  
 on:
   schedule:
-    - cron: '0 */8 * * *' # Every 5 hours
+    - cron: '0 */7 * * *' # Every 5 hours
     #- cron: '0 2 * * *'   # 09:00 ICT
     #- cron: '0 7 * * *'   # 14:00 ICT
     #- cron: '0 12 * * *'  # 19:00 ICT
@@ -148,7 +148,7 @@ jobs:
           TG_CHANNEL_NAME_EN:         ${{ secrets.TG_CHANNEL_NAME_EN }} #"xeonbitchannel"
           TTS_VOICE_EN:               ${{ vars.TTS_VOICE_EN || 'en-SG-LunaNeural' }}
           DESCRIPTION_EN:             ${{ vars.DESCRIPTION_EN || 'Latest crypto & tech news in English' }}
-          TAGS_EN:                    ${{ vars.TAGS_EN || '["Shorts","Crypto","Bitcoin","Tech","News"]' }}
+          TAGS_EN:                    ${{ vars.TAGS_EN || '["Shorts","Crypto","Bitcoin","TechTalk","News"]' }}
           BRAND_HASHTAGS_EN:          ${{ vars.BRAND_HASHTAGS_EN || '["xeonbit24","xeonbit24.com"]' }}
           OUTRO_CTA_EN:               ${{ vars.OUTRO_CTA_EN || 'Follow for latest crypto news. Like & Subscribe!' }}
           INTRO_LABEL_EN:             ${{ vars.INTRO_LABEL_EN || 'BREAKING' }}
@@ -158,7 +158,7 @@ jobs:
           MUSIC_OPTION:               "music.mp3"
           LOGO_PATH_EN:               "brand_logo.png"
           CLIPS_DIR_EN:               "clips"
-          MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
+          MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '2' }}
           TELEGRAM_PHOTO_CACHE:       ".telegram_photo_cache_en.json"
         run: python short_creator_bilingual7seq6.py --lang en
 
@@ -351,7 +351,7 @@ jobs:
           TG_CHANNEL_NAME_VI:         ${{ secrets.TG_CHANNEL_NAME_EN }} #"TechTalk66"
           TTS_VOICE_VI:               ${{ vars.TTS_VOICE_VI || 'vi-VN-HoaiMyNeural' }}
           DESCRIPTION_VI:             ${{ vars.DESCRIPTION_VI || 'Tin tức công nghệ và crypto bằng tiếng Việt' }}
-          TAGS_VI:                    ${{ vars.TAGS_VI || '["Shorts","CryptoViet","TinTuc","CongNghe"]' }}
+          TAGS_VI:                    ${{ vars.TAGS_VI || '["Shorts","CryptoHieuQua","TinTuc","CongNghe"]' }}
           BRAND_HASHTAGS_VI:          ${{ vars.BRAND_HASHTAGS_VI || '["techtalk66","techtalk"]' }}
           OUTRO_CTA_VI:               ${{ vars.OUTRO_CTA_VI || 'Theo dõi để cập nhật tin tức mới nhất. Like & Đăng ký!' }}
           INTRO_LABEL_VI:             ${{ vars.INTRO_LABEL_VI || 'TIN MỚI' }}
@@ -361,7 +361,7 @@ jobs:
           MUSIC_OPTION:               "music.mp3"
           LOGO_PATH_VI:               "brand_logo.png"
           CLIPS_DIR_VI:               "clips"
-          MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '3' }}
+          MAX_TELEGRAM_POSTS:         ${{ inputs.max_posts || '2' }}
           TELEGRAM_PHOTO_CACHE:       ".telegram_photo_cache_vi.json"
         run: python short_creator_bilingual7seq6.py --lang vi
 
