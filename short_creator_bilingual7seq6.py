@@ -491,7 +491,7 @@ class Config:
     BRAND_HASHTAGS: List[str] = field(default_factory=list)
 
     # Layout
-    MAX_DURATION: int = 59
+    MAX_DURATION: int = 39
     MUSIC_OPTION: str = "music.mp3"
     CLIPS_DIR: str = "clips"
     FONT_PATH: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
@@ -502,7 +502,7 @@ class Config:
     LOGO_WIDTH_RATIO: float = 0.20
     LOGO_MARGIN_PX: int = 28
     LOGO_OPACITY: float = 0.92
-    TG_CHANNEL_NAME: str = "xeonbitchannel"
+    TG_CHANNEL_NAME: str = "TechTalk66"
     TG_NOTIFY_CHANNEL: str = ""        # channel to post YT notification (e.g. "@xeonbitchannel")
     PUBLISHED_IDS_FILE: str = ".published_ids.json"
 
