@@ -491,7 +491,7 @@ class Config:
     BRAND_HASHTAGS: List[str] = field(default_factory=list)
 
     # Layout
-    MAX_DURATION: int = 39
+    MAX_DURATION: int = 29
     MUSIC_OPTION: str = "music.mp3"
     CLIPS_DIR: str = "clips"
     FONT_PATH: str = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
@@ -502,26 +502,26 @@ class Config:
     LOGO_WIDTH_RATIO: float = 0.20
     LOGO_MARGIN_PX: int = 28
     LOGO_OPACITY: float = 0.92
-    TG_CHANNEL_NAME: str = "TechTalk66"
+    TG_CHANNEL_NAME: str = "xeonbitchannel"
     TG_NOTIFY_CHANNEL: str = ""        # channel to post YT notification (e.g. "@xeonbitchannel")
     PUBLISHED_IDS_FILE: str = ".published_ids.json"
 
     # Timeline — 7-segment layout (Hook / Img1 / Dance / Img2 / Img3 / Summary / CTA)
     # Matches the 59s bố cục: 0-3 / 3-16 / 16-20 / 20-33 / 33-46 / 46-52 / 52-59
-    DUR_HOOK: float = 3.0
-    DUR_IMG1: float = 13.0
-    DUR_DANCE: float = 4.0
-    DUR_IMG2: float = 13.0
-    DUR_IMG3: float = 13.0
-    DUR_SUMMARY: float = 6.0
-    DUR_CTA: float = 7.0
+    DUR_HOOK: float = 2.0
+    DUR_IMG1: float = 9.0
+    DUR_DANCE: float = 3.0
+    DUR_IMG2: float = 9.0
+    DUR_IMG3: float = 9.0
+    DUR_SUMMARY: float = 4.0
+    DUR_CTA: float = 5.0
 
     # Legacy aliases kept for backward-compat ENV overrides (unused by new timeline)
-    DUR_MAIN: float = 11.0
-    DUR_CLIPA: float = 15.0
-    DUR_FLASH: float = 6.0
-    DUR_CLIPB: float = 15.0
-    DUR_OUTRO: float = 6.0
+    DUR_MAIN: float = 7.0
+    DUR_CLIPA: float = 9.0
+    DUR_FLASH: float = 4.0
+    DUR_CLIPB: float = 9.0
+    DUR_OUTRO: float = 4.0
 
     # Audio
     BG_MUSIC_VOL: float = 0.12
