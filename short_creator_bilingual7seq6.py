@@ -2073,7 +2073,7 @@ async def run_language_pipeline(
 def _shared_overrides() -> dict:
     return dict(
         TITLE_TEMPLATE=os.getenv("TITLE_TEMPLATE", "Video Short - {date}"),
-        MAX_DURATION=int(os.getenv("MAX_DURATION", 59)),
+        MAX_DURATION=int(os.getenv("MAX_DURATION", 29)),
         MUSIC_OPTION=os.getenv("MUSIC_OPTION", "music.mp3"),
         FONT_PATH=os.getenv("FONT_PATH", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         FONT_BOLD_PATH=os.getenv("FONT_BOLD_PATH",
@@ -2082,12 +2082,12 @@ def _shared_overrides() -> dict:
         LOGO_WIDTH_RATIO=float(os.getenv("LOGO_WIDTH_RATIO", "0.20")),
         LOGO_OPACITY=float(os.getenv("LOGO_OPACITY", "0.92")),
         PRIVACY_STATUS=os.getenv("PRIVACY_STATUS", "private"),
-        DUR_MAIN=float(os.getenv("DUR_MAIN", "11.0")),
-        DUR_CLIPA=float(os.getenv("DUR_CLIPA", "15.0")),
-        DUR_FLASH=float(os.getenv("DUR_FLASH", "6.0")),
-        DUR_CLIPB=float(os.getenv("DUR_CLIPB", "15.0")),
-        DUR_SUMMARY=float(os.getenv("DUR_SUMMARY", "6.0")),
-        DUR_OUTRO=float(os.getenv("DUR_OUTRO", "6.0")),
+        DUR_MAIN=float(os.getenv("DUR_MAIN", "6.5")),
+        DUR_CLIPA=float(os.getenv("DUR_CLIPA", "7.5")),
+        DUR_FLASH=float(os.getenv("DUR_FLASH", "3.0")),
+        DUR_CLIPB=float(os.getenv("DUR_CLIPB", "7.5")),
+        DUR_SUMMARY=float(os.getenv("DUR_SUMMARY", "3.0")),
+        DUR_OUTRO=float(os.getenv("DUR_OUTRO", "3.0")),
         BG_MUSIC_VOL=float(os.getenv("BG_MUSIC_VOL", "0.12")),
         TTS_VOL=float(os.getenv("TTS_VOL", "1.0")),
     )
