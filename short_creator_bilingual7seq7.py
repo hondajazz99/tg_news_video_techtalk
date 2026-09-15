@@ -481,7 +481,7 @@ class Config:
     # YouTube (per-language)
     YOUTUBE_CLIENT_SECRETS: dict
     PLAYLIST_ID: str = ""
-    PUBLISH_DELAY_HOURS: int = 1
+    PUBLISH_DELAY_HOURS: int = 0
     PRIVACY_STATUS: str = "private"
 
     # Metadata
@@ -2197,7 +2197,7 @@ async def _main():
                 "BRAND_HASHTAGS":      get_env_json("BRAND_HASHTAGS_EN",
                                                    '["xeonbit24","xeonbit24.com"]'),
                 "PLAYLIST_ID":         os.getenv("PLAYLIST_ID_EN", "PLKfhqWP2rL8LS6mS4eJk0sx43sD4x8TeV"),
-                "PUBLISH_DELAY_HOURS": int(os.getenv("PUBLISH_DELAY_HOURS_EN", 1)),
+                "PUBLISH_DELAY_HOURS": int(os.getenv("PUBLISH_DELAY_HOURS_EN", 0)),
                 "LOGO_PATH":           os.getenv("LOGO_PATH_EN",
                                                 os.getenv("LOGO_PATH", "brand_logo.png")),
                 "CLIPS_DIR":           os.getenv("CLIPS_DIR_EN",
@@ -2233,7 +2233,7 @@ async def _main():
                 "BRAND_HASHTAGS":      get_env_json("BRAND_HASHTAGS_VI",
                                                    '["techtalk66","techtalk"]'),
                 "PLAYLIST_ID":         os.getenv("PLAYLIST_ID_VI", "PLL7BH4dMy6VxNRcIWVpKYlC-9AJR3Tytn"),
-                "PUBLISH_DELAY_HOURS": int(os.getenv("PUBLISH_DELAY_HOURS_VI", 1)),
+                "PUBLISH_DELAY_HOURS": int(os.getenv("PUBLISH_DELAY_HOURS_VI", 0)),
                 "LOGO_PATH":           os.getenv("LOGO_PATH_VI",
                                                 os.getenv("LOGO_PATH", "brand_logo.png")),
                 "CLIPS_DIR":           os.getenv("CLIPS_DIR_VI",
